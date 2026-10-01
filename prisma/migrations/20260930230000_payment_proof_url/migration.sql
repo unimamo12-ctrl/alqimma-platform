@@ -1,0 +1,12 @@
+-- Payment proof: a photo of the transfer receipt the student attaches when they
+-- request a subscription.
+--
+-- BaridiMob and MOB are both manual, so the reference number alone leaves the
+-- admin guessing. A picture of the receipt is what makes a request reviewable.
+--
+-- Stored as a local path under /uploads/image/ and never as an arbitrary URL:
+-- `POST /api/subscriptions` only accepts a value matching that prefix, so a
+-- student cannot make an admin's browser fetch a third-party host by putting a
+-- link in this column. It is nullable because the receipt stays optional — a
+-- student with no photo can still be approved on the reference alone.
+ALTER TABLE "payments" ADD COLUMN "proofUrl" TEXT;

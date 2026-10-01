@@ -1,0 +1,629 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  STUDENT
+  TEACHER
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+enum CourseType {
+  FREE
+  PAID
+}
+
+// Teacher-controlled intent is stored; the rest of the lifecycle is derived
+// from the time window and the attempts so it never needs a cron job.
+enum QuizStatus {
+  DRAFT
+  PUBLISHED
+  AVAILABLE
+  IN_PROGRESS
+  COMPLETED
+  EXPIRED
+  ARCHIVED
+}
+
+enum QuizQuestionType {
+  MULTIPLE_CHOICE
+  TEXT
+}
+
+enum QuizGradingPolicy {
+  LAST_ATTEMPT
+  BEST_ATTEMPT
+  AVERAGE
+}
+
+enum QuizAttemptStatus {
+  IN_PROGRESS
+  SUBMITTED
+  PENDING_REVIEW
+  GRADED
+}
+
+enum SessionStatus {
+  SCHEDULED
+  LIVE
+  ENDED
+  CANCELLED
+}
+
+enum SubscriptionStatus {
+  PENDING
+  ACTIVE
+  REJECTED
+  EXPIRED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum AccessType {
+  LIVE
+  VIDEO
+  EXERCISE
+}
+
+enum PaymentMethod {
+  BARIDI
+  MOB
+}
+
+model User {
+  id            String        @id @default(cuid())
+  email         String        @unique
+  password      String
+  role          Role          @default(STUDENT)
+  status        UserStatus    @default(ACTIVE)
+  emailVerified Boolean       @default(false)
+  lastLoginAt   DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  refreshTokens RefreshToken[]
+  passwordResetTokens PasswordResetToken[]
+  notifications Notification[]
+  messages      Message[]
+
+  student       Student?
+  teacher       Teacher?
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@map("refresh_tokens")
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@map("password_reset_tokens")
+}
+
+model Enrollment {
+  id        String   @id @default(cuid())
+  studentId String
+  student   Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  courseId  String
+  course    Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([studentId, courseId])
+  @@index([courseId])
+  @@map("enrollments")
+}
+
+model Student {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  firstName String
+  lastName  String
+  phone     String?
+  level     String?
+  class     String?
+  avatar    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  subscriptions Subscription[]
+  attendances   Attendance[]
+  progress      VideoProgress[]
+  enrollments   Enrollment[]
+  quizAssignments QuizAssignment[]
+  quizAttempts  QuizAttempt[]
+
+  @@map("students")
+}
+
+model Teacher {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  firstName String
+  lastName  String
+  bio       String?
+  avatar    String?
+  subjects  String[]
+  levels    String[]
+  isOnline  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  courses       Course[]
+  liveSessions  LiveSession[]
+  announcements Announcement[]
+  quizzes       Quiz[]
+
+  @@map("teachers")
+}
+
+model Subject {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  nameAr    String?
+  icon      String?
+  color     String?
+  createdAt DateTime @default(now())
+
+  courses      Course[]
+  access       SubjectAccess[]
+  subscriptions Subscription[]
+
+  @@map("subjects")
+}
+
+model Level {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  nameAr    String?
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+
+  courses Course[]
+
+  @@map("levels")
+}
+
+model Course {
+  id          String     @id @default(cuid())
+  teacherId   String
+  teacher     Teacher    @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  subjectId   String
+  subject     Subject    @relation(fields: [subjectId], references: [id])
+  levelId     String
+  level       Level      @relation(fields: [levelId], references: [id])
+  title       String
+  description String?
+  type        CourseType @default(FREE)
+  price       Decimal    @default(0) @db.Decimal(10, 2)
+  thumbnail    String?
+  isPublished Boolean    @default(false)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  videos       Video[]
+  files        File[]
+  liveSessions LiveSession[]
+  exercises    Exercise[]
+  enrollments  Enrollment[]
+  quizzes      Quiz[]
+
+  @@map("courses")
+}
+
+model Video {
+  id          String   @id @default(cuid())
+  courseId    String
+  course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  url         String
+  thumbnail   String?
+  duration    Int      @default(0)
+  order       Int      @default(0)
+  isPublished Boolean  @default(false)
+  views       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  progress VideoProgress[]
+
+  @@map("videos")
+}
+
+model VideoProgress {
+  id            String   @id @default(cuid())
+  videoId       String
+  video         Video    @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  studentId     String
+  student       Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  progress      Int      @default(0)
+  completed     Boolean  @default(false)
+  lastPosition  Int      @default(0)
+  updatedAt     DateTime @updatedAt
+
+  @@unique([videoId, studentId])
+  @@map("video_progress")
+}
+
+model File {
+  id          String   @id @default(cuid())
+  courseId    String
+  course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  url         String
+  fileType    String
+  size        Int      @default(0)
+  isPublished Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("files")
+}
+
+model LiveSession {
+  id          String        @id @default(cuid())
+  teacherId   String
+  teacher     Teacher       @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  courseId    String
+  course      Course        @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  thumbnail   String?
+  scheduledAt DateTime
+  endedAt     DateTime?
+  status      SessionStatus @default(SCHEDULED)
+  isRecorded  Boolean       @default(false)
+  recordingUrl String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  participants Participant[]
+  attendances  Attendance[]
+  messages     Message[]
+
+  @@map("live_sessions")
+}
+
+model Participant {
+  id        String   @id @default(cuid())
+  sessionId String
+  session   LiveSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  userId    String
+  joinedAt  DateTime @default(now())
+  leftAt    DateTime?
+  isMuted   Boolean  @default(false)
+  isCameraOff Boolean @default(false)
+  isHandRaised Boolean @default(false)
+
+  @@unique([sessionId, userId])
+  @@map("participants")
+}
+
+model Attendance {
+  id        String   @id @default(cuid())
+  sessionId String
+  session   LiveSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  studentId String
+  student   Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  joinTime  DateTime @default(now())
+  leaveTime DateTime?
+  duration  Int      @default(0)
+
+  @@unique([sessionId, studentId])
+  @@map("attendance")
+}
+
+// Price and duration for one access type on one subject.
+//
+// This replaces the old SubscriptionPlan bundles. A bundle said "pay once,
+// get everything", which is the opposite of what a per-subject school platform
+// needs: a student taking only physics should not pay for Arabic, and a student
+// who only wants recorded lessons should not pay for the live room. So the
+// catalog is a matrix of (subject, accessType) and each cell is bought
+// separately.
+//
+// durationDays is per cell too, because live access is naturally sold shorter
+// than a semester of recordings.
+model SubjectAccess {
+  id           String      @id @default(cuid())
+  subjectId    String
+  subject      Subject     @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  accessType   AccessType
+  price        Decimal     @db.Decimal(10, 2)
+  durationDays Int         @default(30)
+  isActive     Boolean     @default(true)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  @@unique([subjectId, accessType])
+  @@index([accessType])
+  @@map("subject_access")
+}
+
+// One row per (student, subject, accessType).
+//
+// The composite unique is the whole point: it is what makes the three access
+// types independent. A student with an ACTIVE LIVE row still has no VIDEO row,
+// so the video gate keeps refusing them until they buy that cell separately.
+// The old model had a single planId and one active subscription unlocked
+// everything, which is exactly the behaviour being removed.
+//
+// status starts at PENDING and only an admin moves it to ACTIVE. Until then
+// every content gate refuses, so subscribing is a request, not a key.
+model Subscription {
+  id         String             @id @default(cuid())
+  studentId  String
+  student    Student            @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  subjectId  String
+  subject    Subject            @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  accessType AccessType
+  startDate  DateTime           @default(now())
+  endDate    DateTime
+  status     SubscriptionStatus @default(PENDING)
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @updatedAt
+
+  payments   Payment[]
+
+  @@unique([studentId, subjectId, accessType])
+  @@index([studentId, status])
+  @@index([subjectId])
+  @@map("subscriptions")
+}
+
+// A payment attempt against one subscription.
+//
+// method is an enum rather than a free string because the admin approval
+// screen has to render the two supported methods differently: BaridiMob needs
+// a CCP account number and a transfer reference, MOB needs a phone number and
+// an operator receipt. A free-text field would leave the admin guessing what
+// they are looking at.
+//
+// status stays PENDING until an admin confirms the money actually arrived.
+// Marking it COMPLETED is what activates the subscription, so "the admin
+// verified it" and "the payment is real" are the same event.
+model Payment {
+  id             String        @id @default(cuid())
+  subscriptionId String
+  subscription   Subscription  @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  amount         Decimal       @db.Decimal(10, 2)
+  method         PaymentMethod
+  status         PaymentStatus @default(PENDING)
+  transactionId  String?
+  // photo of the transfer receipt, a local /uploads/image/... path
+  proofUrl       String?
+  createdAt      DateTime      @default(now())
+
+  @@index([subscriptionId])
+  @@map("payments")
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  message   String
+  type      String
+  isRead    Boolean  @default(false)
+  link      String?
+  createdAt DateTime @default(now())
+
+  @@map("notifications")
+}
+
+model Message {
+  id        String   @id @default(cuid())
+  sessionId String
+  session   LiveSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  content   String
+  createdAt DateTime @default(now())
+
+  @@map("messages")
+}
+
+model Announcement {
+  id        String   @id @default(cuid())
+  authorId  String
+  author    Teacher  @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  title     String
+  content   String
+  target    String   @default("ALL")
+  createdAt DateTime @default(now())
+
+  @@map("announcements")
+}
+
+model Exercise {
+  id          String   @id @default(cuid())
+  courseId    String
+  course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  questions   Json     @default("[]")
+  duration    Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("exercises")
+}
+
+model Quiz {
+  id          String       @id @default(cuid())
+  teacherId   String
+  teacher     Teacher      @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  courseId    String
+  course      Course       @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  status      QuizStatus   @default(DRAFT)
+  totalPoints Int          @default(0)
+  // per-attempt time limit in minutes, 0 means untimed
+  durationMin Int          @default(0)
+  maxAttempts Int          @default(1)
+  gradingPolicy QuizGradingPolicy @default(LAST_ATTEMPT)
+  allowNavigation Boolean   @default(true)
+  shuffleQuestions  Boolean @default(false)
+  showCorrectAnswers Boolean @default(false)
+  opensAt     DateTime?
+  closesAt    DateTime?
+  publishedAt DateTime?
+  archivedAt  DateTime?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  questions   QuizQuestion[]
+  assignments QuizAssignment[]
+  attempts    QuizAttempt[]
+
+  @@index([teacherId, status])
+  @@index([courseId])
+  @@map("quizzes")
+}
+
+model QuizQuestion {
+  id        String            @id @default(cuid())
+  quizId    String
+  quiz      Quiz              @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  type      QuizQuestionType  @default(MULTIPLE_CHOICE)
+  text      String
+  // optional picture; when set the question may stand without any text
+  imageUrl  String?
+  points    Int               @default(1)
+  order     Int
+  isRequired Boolean          @default(true)
+  // TEXT questions are graded by the teacher unless auto-grading is on
+  requiresManualGrading Boolean @default(false)
+  // sample/expected answer shown to the teacher and, only when allowed, the student
+  modelAnswer String?
+  // normalized lowercase value used when auto-grading a TEXT answer
+  matchValue   String?
+  matchMode    String?
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+
+  options QuestionOption[]
+  answers QuizAnswer[]
+
+  @@unique([quizId, order])
+  @@map("quiz_questions")
+}
+
+model QuestionOption {
+  id         String       @id @default(cuid())
+  questionId String
+  question   QuizQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  text       String
+  // optional picture, so an option can be purely visual
+  imageUrl   String?
+  isCorrect  Boolean      @default(false)
+  order      Int
+  createdAt  DateTime     @default(now())
+
+  answers QuizAnswer[]
+
+  @@unique([questionId, order])
+  @@map("question_options")
+}
+
+// explicit target list; "assign to the whole section" materialises one row per student
+model QuizAssignment {
+  id         String   @id @default(cuid())
+  quizId     String
+  quiz       Quiz     @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  studentId  String
+  student    Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  assignedAt DateTime @default(now())
+
+  @@unique([quizId, studentId])
+  @@index([studentId])
+  @@map("quiz_assignments")
+}
+
+model QuizAttempt {
+  id           String            @id @default(cuid())
+  quizId       String
+  quiz         Quiz              @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  studentId    String
+  student      Student           @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  attemptNumber Int
+  status       QuizAttemptStatus @default(IN_PROGRESS)
+  startedAt    DateTime          @default(now())
+  expiresAt    DateTime?
+  submittedAt  DateTime?
+  durationSec  Int               @default(0)
+
+  scorePoints    Float @default(0)
+  maxPoints      Int   @default(0)
+  correctCount   Int   @default(0)
+  wrongCount     Int   @default(0)
+  unansweredCount Int  @default(0)
+  percentage     Float @default(0)
+  requiresManualGrading Boolean @default(false)
+  gradedAt       DateTime?
+
+  answers QuizAnswer[]
+
+  @@unique([quizId, studentId, attemptNumber])
+  @@index([studentId])
+  @@map("quiz_attempts")
+}
+
+model QuizAnswer {
+  id         String       @id @default(cuid())
+  attemptId  String
+  attempt    QuizAttempt  @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  questionId String
+  question   QuizQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  selectedOptionId String?
+  selectedOption   QuestionOption? @relation(fields: [selectedOptionId], references: [id], onDelete: SetNull)
+  textAnswer  String?
+  // null while a TEXT answer is still awaiting manual correction
+  isCorrect   Boolean?
+  pointsAwarded Float?
+  feedback    String?
+  answeredAt  DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@unique([attemptId, questionId])
+  @@index([questionId])
+  @@map("quiz_answers")
+}

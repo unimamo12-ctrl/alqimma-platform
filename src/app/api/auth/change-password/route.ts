@@ -1,0 +1,38 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { getSession } from '@/lib/auth/jwt';
+import { changePassword } from '@/lib/auth/auth';
+import { changePasswordSchema } from '@/lib/validation/auth';
+
+export async function POST(request: NextRequest) {
+  try {
+    const session = await getSession();
+
+    if (!session) {
+      return NextResponse.json(
+        { success: false, message: 'غير مصرح' },
+        { status: 401 }
+      );
+    }
+
+    const body = await request.json();
+    const validated = changePasswordSchema.parse(body);
+
+    await changePassword(session.id, validated.currentPassword, validated.newPassword);
+
+    return NextResponse.json({
+      success: true,
+      message: 'تم تغيير كلمة المرور بنجاح',
+    });
+  } catch (error) {
+    if (error instanceof Error) {
+      return NextResponse.json(
+        { success: false, message: error.message },
+        { status: 400 }
+      );
+    }
+    return NextResponse.json(
+      { success: false, message: 'حدث خطأ غير متوقع' },
+      { status: 500 }
+    );
+  }
+}

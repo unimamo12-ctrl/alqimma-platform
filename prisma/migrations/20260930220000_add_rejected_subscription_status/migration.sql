@@ -1,0 +1,11 @@
+-- SubscriptionStatus was extended with REJECTED in the schema when admin
+-- rejection was added, but the migration that rebuilt the `subscriptions` table
+-- never added the value to the existing PostgreSQL enum. The app accepted
+-- REJECTED (it is in the Prisma client) and then failed at the database with
+-- `invalid input value for enum "SubscriptionStatus": "REJECTED"`, which the
+-- route's catch-all turned into a 500. So rejecting a subscription request was
+-- silently broken.
+--
+-- `ADD VALUE` is required here rather than a table rebuild: it cannot run
+-- inside a transaction block on older PostgreSQL, so it is its own statement.
+ALTER TYPE "SubscriptionStatus" ADD VALUE IF NOT EXISTS 'REJECTED';
