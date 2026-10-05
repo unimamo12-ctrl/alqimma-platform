@@ -16,8 +16,10 @@ socket/websocket smoke tests and the browser E2E hit a live server.
 - `npm run typecheck` — tsc, no output on success
 - `npm run lint` — eslint, no output on success
 - `npm run check:quality` — unit checks on the bitrate/frame-rate table
+- `npm run check:ratelimit` — unit checks on how a client address is derived
+- `npm run check:integrity` — asserts no row outlives or contradicts what it points at
 - `npm run build` — stop the dev server first; it rewrites `.next`
-- `npm run verify` — typecheck + lint + check:quality + smoke + smoke:live + smoke:webrtc + e2e:live + e2e:recording + e2e:quiz + e2e:pricing + e2e:subs + e2e:auth + e2e:buy + e2e:receipt + e2e:freepaid + e2e:bootstrap + e2e:nocourses + e2e:locked + e2e:dark + e2e:dark-hover + e2e:sweep + cleanup:sessions
+- `npm run verify` — typecheck + lint + check:quality + check:ratelimit + check:integrity + smoke + smoke:live + smoke:webrtc + e2e:live + e2e:recording + e2e:quiz + e2e:pricing + e2e:subs + e2e:auth + e2e:buy + e2e:receipt + e2e:freepaid + e2e:bootstrap + e2e:nocourses + e2e:locked + e2e:dark + e2e:dark-hover + e2e:sweep + cleanup:sessions
 
 Test accounts all use password `password123`: `admin@alqimma.com`,
 `teacher@alqimma.com`, `student@alqimma.com`.
@@ -368,6 +370,87 @@ Two bugs here were user-visible and neither threw a stack trace, so
 Registration is student/teacher only and cannot create an admin by design;
 `scripts/create-admin.mjs` exists because an operator still needs one, and a
 deployment that never ran `npm run seed` otherwise has no way in at all.
+
+## Two defaults that failed open
+
+Neither of these was reachable through the UI tests, and neither is a
+hypothetical: both were live in this repo. They share one shape — a condition
+that reads as a safety check but whose *permissive* branch is the one that runs.
+
+### A rate-limit key the client chooses
+
+`clientIp` used to read `X-Forwarded-For` and take `split(',')[0]`. That element
+is the one the *client* picked, because the header is **append-only**: a proxy
+adds the address it saw to the end of whatever arrived. So the list looks like
+`"<anything the client chose>, <real client ip>"`, and element `[0]` is
+attacker-controlled. A fresh header per request meant a fresh bucket per
+request, measured at 12 consecutive guesses against the password-only admin gate
+with no lockout at all.
+
+- **Take the rightmost entry** — the one the nearest trusted proxy appended —
+  falling back to `x-real-ip` for an edge that rewrites rather than appends.
+  `npm run check:ratelimit` pins the parsing, including the empty-header and
+  no-header cases that would otherwise yield a `""` or shared key.
+- **The honest limit is behind that fix.** With no proxy in front, the header is
+  whatever the client typed and *no* element is safe; the limiter then degrades
+  to one shared bucket, which is noisy but fails closed. Do not describe it as
+  spoof-proof without a proxy in front of it.
+- **The gate had a second, private copy of the limiter.** `panel-access` kept its
+  own `Map` and its own leftmost-element parser, so it was vulnerable
+  independently of the shared helper and a fix to one would not have reached the
+  other. It now calls `checkLimit` / `clearLimit` / `clientKey` like every other
+  route, which also bounds that map's growth under an address spray.
+- Still per-process, so it resets on restart and does not coordinate across
+  instances. A multi-instance deploy wants this in the database or a shared
+  cache. Same for the login route's bucket.
+
+### A reset token in the response because `NODE_ENV` was unset
+
+`forgot-password` returned the working `resetUrl` in its JSON when
+`process.env.NODE_ENV !== 'production'`. On a container platform `NODE_ENV` is
+frequently *unset*, and `'production' === undefined` is false, so the condition
+is **true** — the response handed back a live token for any address on the
+platform, which is account takeover rather than a development convenience. It
+also meant the flag protected nothing on a staging deploy with `NODE_ENV=staging`.
+
+- It is now **opt-in** via `ALLOW_INSECURE_DEV_RESET === 'true'`, and the whole
+  branch is inert once `PASSWORD_RESET_WEBHOOK_URL` is set, because a configured
+  webhook is then the real delivery path.
+- With neither set, the response is the same generic Arabic message for every
+  address — no token, no indication of whether the account exists.
+- Assert the *absence* of the field, not just the `200`: the message and the
+  status are identical in both cases, so a status-code test cannot tell the
+  secure response from the leak.
+- `PASSWORD_RESET_SECRET` falls back to `JWT_SECRET`, which is convenient and
+  means resetting a secret can silently invalidate every session — set the
+  dedicated variable on a real deployment.
+
+## Data integrity
+
+`npm run check:integrity` is in `verify` and asserts the things a cascade cannot
+guarantee. Relations with a non-nullable foreign key cannot orphan — the
+database rejects the delete — so checking them would be theatre. What *can* rot
+is anything held in a plain column, which is exactly where the dead quiz
+notifications came from:
+
+- **notification `link` is a string**, so nothing enforces the target exists.
+  Every `notification` is parsed against the routes the app actually serves and
+  the target looked up. This is the check that found the three notifications
+  pointing at a deleted quiz.
+- **`isRecorded: true` with no `recordingUrl`** — a replay link that resolves to
+  nothing.
+- **a published video inside an unpublished course** — unreachable, because both
+  flags are checked and the course hides the video.
+- **an `ENDED` session with no `endedAt`**, and **`ACTIVE` subscriptions outside
+  `startDate`/`endDate`** — status that contradicts the row's own dates, which is
+  exactly what the access gate trusts.
+- **the foreign keys themselves**, via four `LEFT JOIN` counts, so a broken one
+  shows up as a deleted parent rather than as a mystery.
+
+Write the check so it can fail. An integrity script whose queries are all valid
+and whose filters match nothing reports clean forever, which is worse than no
+check because it reads as coverage.
+
 ## The catalog, and platforms that were never seeded
 
 A course needs a subject *and* a level, and both were **read-only** until this was
