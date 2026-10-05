@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { loginUser } from '@/lib/auth/auth';
+import { loginUser, AuthError } from '@/lib/auth/auth';
 import { loginSchema } from '@/lib/validation/auth';
 import {
   checkLimit,
@@ -60,18 +60,25 @@ export async function POST(request: NextRequest) {
     clearLimit(accountKey);
 
     return NextResponse.json({ success: true, data: result });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'حدث خطأ غير متوقع';
-    const invalidCredentials = message.includes('غير صحيحة');
+} catch (error) {
+      const message = error instanceof Error ? error.message : 'حدث خطأ غير متوقع';
 
-    if (invalidCredentials) {
-      checkLimit(ipKey, MAX_ATTEMPTS, WINDOW_MS, true);
-      checkLimit(accountKey, MAX_ATTEMPTS, WINDOW_MS, true);
+      // Branch on the code, not on the Arabic prose. Matching `غير صحيحة` used to
+      // send a suspended account down the generic branch and answer 500.
+      const invalidCredentials =
+        error instanceof AuthError && error.code === 'INVALID_CREDENTIALS';
+      const inactive = error instanceof AuthError && error.code === 'ACCOUNT_INACTIVE';
+
+      if (invalidCredentials) {
+        checkLimit(ipKey, MAX_ATTEMPTS, WINDOW_MS, true);
+        checkLimit(accountKey, MAX_ATTEMPTS, WINDOW_MS, true);
+      }
+
+      return NextResponse.json(
+        { success: false, message },
+        // wrong password is 401, a disabled account is 403, and only an
+        // unexpected failure is a 5xx
+        { status: invalidCredentials ? 401 : inactive ? 403 : 500 },
+      );
     }
-
-    return NextResponse.json(
-      { success: false, message },
-      { status: invalidCredentials ? 401 : 500 },
-    );
-  }
 }

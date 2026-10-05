@@ -6,6 +6,28 @@ const SALT_ROUNDS = 12;
 
 const REFRESH_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
+/**
+ * A login failure with a machine-readable code.
+ *
+ * The route used to tell "wrong password" from "account disabled" by searching
+ * the Arabic message for `غير صحيحة`, which meant a suspended account fell
+ * through to the generic branch and was answered with **HTTP 500** — a normal
+ * outcome reported as a server fault, and a status a client treats as "try again
+ * later" rather than "this account is disabled". Branching on a code cannot drift
+ * when the wording changes.
+ */
+export type AuthErrorCode = 'INVALID_CREDENTIALS' | 'ACCOUNT_INACTIVE';
+
+export class AuthError extends Error {
+  constructor(
+    message: string,
+    readonly code: AuthErrorCode,
+  ) {
+    super(message);
+    this.name = 'AuthError';
+  }
+}
+
 async function issueSession(user: { id: string; email: string; role: 'STUDENT' | 'TEACHER' | 'ADMIN' }) {
   const accessToken = generateAccessToken({
     userId: user.id,
@@ -122,17 +144,17 @@ export async function loginUser(email: string, password: string) {
   });
 
   if (!user) {
-    throw new Error('البريد الإلكتروني أو كلمة المرور غير صحيحة');
+    throw new AuthError('البريد الإلكتروني أو كلمة المرور غير صحيحة', 'INVALID_CREDENTIALS');
   }
 
   if (user.status !== 'ACTIVE') {
-    throw new Error('الحساب غير نشط. تواصل مع الإدارة');
+    throw new AuthError('الحساب غير نشط. تواصل مع الإدارة', 'ACCOUNT_INACTIVE');
   }
 
   const isValid = await verifyPassword(password, user.password);
 
   if (!isValid) {
-    throw new Error('البريد الإلكتروني أو كلمة المرور غير صحيحة');
+    throw new AuthError('البريد الإلكتروني أو كلمة المرور غير صحيحة', 'INVALID_CREDENTIALS');
   }
 
   await prisma.user.update({

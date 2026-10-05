@@ -17,7 +17,7 @@ socket/websocket smoke tests and the browser E2E hit a live server.
 - `npm run lint` — eslint, no output on success
 - `npm run check:quality` — unit checks on the bitrate/frame-rate table
 - `npm run build` — stop the dev server first; it rewrites `.next`
-- `npm run verify` — typecheck + lint + check:quality + smoke + smoke:live + smoke:webrtc + e2e:live + e2e:recording + e2e:quiz + e2e:pricing + e2e:subs + e2e:buy + e2e:receipt + e2e:freepaid + e2e:bootstrap + e2e:nocourses + e2e:locked + e2e:dark + e2e:dark-hover + e2e:sweep + cleanup:sessions
+- `npm run verify` — typecheck + lint + check:quality + smoke + smoke:live + smoke:webrtc + e2e:live + e2e:recording + e2e:quiz + e2e:pricing + e2e:subs + e2e:auth + e2e:buy + e2e:receipt + e2e:freepaid + e2e:bootstrap + e2e:nocourses + e2e:locked + e2e:dark + e2e:dark-hover + e2e:sweep + cleanup:sessions
 
 Test accounts all use password `password123`: `admin@alqimma.com`,
 `teacher@alqimma.com`, `student@alqimma.com`.
@@ -341,6 +341,33 @@ either may be text-only, picture-only, or both. Related decisions worth keeping:
   multi-instance deploy. Moving to object storage means only the value shape in
   the validator and the `ImagePicker` need to change.
 
+## Sign-up and sign-in
+
+Two bugs here were user-visible and neither threw a stack trace, so
+`npm run e2e:auth` covers both.
+
+- **Never return a ZodError's own `message` to a page.** It is the serialised
+  issue array, and the register and change-password pages render `message`
+  verbatim — so a student who mistyped the password confirmation saw
+  `[ { "code": "custom", "path": ["confirmPassword"], "message": "كلمتا المرور غير متطابقتين" } ]`
+  instead of the sentence. Both routes now go through `parseBody`
+  (`src/lib/validation/quiz.ts`), which returns the first issue's message.
+- **Never identify a failure by its Arabic wording.** The login route tested
+  `message.includes('غير صحيحة')` to mean "wrong password", so a *suspended*
+  account missed that branch and was answered with **HTTP 500** — an ordinary
+  outcome reported as a server fault, and a status the client reads as "retry
+  later" instead of "this account is disabled". `loginUser` now throws
+  `AuthError` with a `code` (`INVALID_CREDENTIALS` | `ACCOUNT_INACTIVE`), and the
+  route branches on the code: 401 wrong password, 403 disabled, 5xx only for a
+  genuinely unexpected failure.
+- A too-short password is a **malformed request (400)** and never reaches the
+  credential check. That is correct, and it means such an attempt does not count
+  against the rate limit — worth knowing before writing a test with a 4-character
+  "wrong password" and concluding sign-in returns 400.
+
+Registration is student/teacher only and cannot create an admin by design;
+`scripts/create-admin.mjs` exists because an operator still needs one, and a
+deployment that never ran `npm run seed` otherwise has no way in at all.
 ## The catalog, and platforms that were never seeded
 
 A course needs a subject *and* a level, and both were **read-only** until this was
