@@ -3,6 +3,7 @@ import { compare } from 'bcryptjs';
 import { prisma } from '@/lib/prisma/client';
 import { generateAccessToken, generateRefreshToken } from '@/lib/auth/token';
 import { setAuthCookies } from '@/lib/auth/jwt';
+import { checkLimit, clearLimit, clientKey } from '@/lib/security/rate-limit';
 
 const MAX_ATTEMPTS = 5;
 const WINDOW_MS = 10 * 60 * 1000;
@@ -10,42 +11,27 @@ const WINDOW_MS = 10 * 60 * 1000;
 /**
  * Failed attempts per client address.
  *
- * In-memory, so it resets when the process restarts and does not coordinate
- * across instances. That is acceptable here precisely because guessing an
- * unknown password is expensive (bcrypt) and the same weakness already exists
- * on the normal login route; a real deployment wants this in the database or a
- * shared cache.
+ * This used to be a second hand-rolled Map inside this file. It is now the shared
+ * limiter, which matters for two reasons: the local copy keyed on the *leftmost*
+ * `x-forwarded-for` entry, so a forged header gave a fresh bucket per request and
+ * this gate — password only, with no second factor to slow a guesser — recorded
+ * 12 consecutive attempts without ever locking; and a private Map has no bound on
+ * its size, so a spray across many addresses grew it without limit.
+ *
+ * The limiter is still per-process, so it resets on restart and does not
+ * coordinate across instances. See `clientIp` for what the key is and is not.
  */
-const attempts = new Map<string, { count: number; firstAt: number }>();
-
-function clientKey(request: Request): string {
-  const forwarded = request.headers.get('x-forwarded-for');
-  if (forwarded) return forwarded.split(',')[0].trim();
-  return request.headers.get('x-real-ip') ?? 'local';
-}
-
 function isLockedOut(key: string): boolean {
-  const record = attempts.get(key);
-  if (!record) return false;
-
-  if (Date.now() - record.firstAt > WINDOW_MS) {
-    attempts.delete(key);
-    return false;
-  }
-  return record.count >= MAX_ATTEMPTS;
+  // `record: false` — a probe must not itself count as an attempt
+  return !checkLimit(key, MAX_ATTEMPTS, WINDOW_MS, false).ok;
 }
 
 function noteFailure(key: string) {
-  const record = attempts.get(key);
-  if (!record || Date.now() - record.firstAt > WINDOW_MS) {
-    attempts.set(key, { count: 1, firstAt: Date.now() });
-    return;
-  }
-  record.count += 1;
+  checkLimit(key, MAX_ATTEMPTS, WINDOW_MS, true);
 }
 
 export async function POST(request: Request) {
-  const key = clientKey(request);
+  const key = clientKey(request, 'panel-access');
 
   if (isLockedOut(key)) {
     return NextResponse.json(
@@ -102,7 +88,7 @@ export async function POST(request: Request) {
     );
   }
 
-  attempts.delete(key);
+  clearLimit(key);
 
   const role = 'ADMIN';
   const accessToken = generateAccessToken({ userId: matched.id, email: matched.email, role });

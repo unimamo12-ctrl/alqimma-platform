@@ -76,6 +76,21 @@ export async function POST(request: Request) {
 
   const webhook = process.env.PASSWORD_RESET_WEBHOOK_URL;
 
+  /*
+   * Opt-in, not opt-out.
+   *
+   * This used to be `NODE_ENV !== 'production'`, which fails **open**: with
+   * NODE_ENV unset — easy on a container platform — the condition is true, the
+   * link is printed and it is also returned in the API response. Anyone could
+   * then request a reset for any address and receive a working token, which is
+   * account takeover, not a development convenience.
+   *
+   * `ALLOW_INSECURE_DEV_RESET` has to be set deliberately, and is inert once a
+   * webhook is configured because that is then the real delivery path.
+   */
+  const allowInsecureDevReset =
+    process.env.ALLOW_INSECURE_DEV_RESET === 'true' && !webhook;
+
   if (webhook) {
     try {
       await fetch(webhook, {
@@ -90,11 +105,11 @@ export async function POST(request: Request) {
         { status: 502 },
       );
     }
-  } else if (process.env.NODE_ENV !== 'production') {
+  } else if (allowInsecureDevReset) {
     console.log(`[dev] password reset link for ${user.email}: ${resetUrl}`);
   }
 
-  if (process.env.NODE_ENV !== 'production' && !webhook) {
+  if (allowInsecureDevReset) {
     return Response.json(
       {
         success: true,

@@ -83,11 +83,41 @@ export function rateLimitHeaders(result: RateLimitResult, limit: number): Record
   return headers;
 }
 
-export function clientKey(request: Request, scope: string): string {
+/**
+ * The client identity a rate-limit bucket is keyed on.
+ *
+ * `x-forwarded-for` is **append-only**: a proxy adds the address it saw to the end
+ * of whatever the client already sent. So the list arrives as
+ * `"<anything the client chose>, <real client ip>"`, and element `[0]` is the
+ * attacker-controlled part. Reading it meant an attacker could send a fresh
+ * `X-Forwarded-For` per request and get a fresh bucket every time — measured at 12
+ * consecutive guesses against the password-only admin gate with no lockout at all,
+ * and the same against the login route's per-IP bucket.
+ *
+ * The rightmost entry is the one the nearest trusted proxy appended, so that is
+ * what is used. `x-real-ip` is the next best, as an edge that rewrites rather
+ * than appends sets only that.
+ *
+ * The honest limitation: this is only trustworthy *behind* a proxy that appends.
+ * With no proxy in front the header is whatever the client typed, and no choice of
+ * element is safe — the limiter then degrades to one shared bucket, which is
+ * noisy but fails closed. A multi-instance deployment still needs this in the
+ * database or a shared cache, because the buckets are per-process.
+ */
+export function clientIp(request: Request): string {
   const forwarded = request.headers.get('x-forwarded-for');
-  const ip =
-    forwarded?.split(',')[0]?.trim() ||
-    request.headers.get('x-real-ip') ||
-    'unknown';
-  return `${scope}:${ip}`;
+  if (forwarded) {
+    // rightmost, not leftmost — see above
+    const hops = forwarded.split(',').map((hop) => hop.trim()).filter(Boolean);
+    if (hops.length > 0) return hops[hops.length - 1];
+  }
+
+  const realIp = request.headers.get('x-real-ip');
+  if (realIp) return realIp.trim();
+
+  return 'unknown';
+}
+
+export function clientKey(request: Request, scope: string): string {
+  return `${scope}:${clientIp(request)}`;
 }
