@@ -32,6 +32,10 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# ...but the committed template is the whole point of having one. `.env*` above
+# also matched it, so a fresh clone had nothing to copy and every variable had to
+# be rediscovered from the source.
+!.env.example
 
 # vercel
 .vercel

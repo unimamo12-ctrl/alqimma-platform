@@ -5,7 +5,7 @@
     "scripts": {
         "dev": "tsx server.ts",
         "dev:next": "next dev",
-        "build": "next build",
+        "build": "node scripts/deploy-bootstrap.mjs && next build",
         "start": "cross-env NODE_ENV=production tsx server.ts",
         "start:next": "next start",
         "lint": "eslint",
@@ -23,6 +23,8 @@
         "cleanup:sessions": "node scripts/cleanup-test-sessions.mjs",
         "verify": "npm run typecheck && npm run lint && npm run check:quality && npm run check:ratelimit && npm run check:integrity && npm run smoke && npm run smoke:live && npm run smoke:webrtc && npm run e2e:live && npm run e2e:recording && npm run e2e:quiz && npm run e2e:pricing && npm run e2e:subs && npm run e2e:buy && npm run e2e:auth && npm run e2e:receipt && npm run e2e:freepaid && npm run e2e:nocourses && npm run e2e:locked && npm run e2e:dark && npm run e2e:dark-hover && npm run e2e:bootstrap && npm run e2e:sweep && npm run cleanup:sessions",
         "seed": "tsx prisma/seed.ts",
+        "bootstrap:deploy": "node scripts/deploy-bootstrap.mjs",
+        "e2e:bootstrap-deploy": "node scripts/e2e-deploy-bootstrap.mjs",
         "postinstall": "prisma generate",
         "seed:test": "tsx prisma/seed-test-accounts.ts",
         "e2e:subs": "node scripts/e2e-subscriptions.mjs",

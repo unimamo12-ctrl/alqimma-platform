@@ -18,7 +18,9 @@ socket/websocket smoke tests and the browser E2E hit a live server.
 - `npm run check:quality` — unit checks on the bitrate/frame-rate table
 - `npm run check:ratelimit` — unit checks on how a client address is derived
 - `npm run check:integrity` — asserts no row outlives or contradicts what it points at
-- `npm run build` — stop the dev server first; it rewrites `.next`
+- `npm run bootstrap:deploy` — apply migrations, repair the catalog, create a first admin if there is none
+- `npm run e2e:bootstrap-deploy` — proves the above against a throwaway schema; needs a writable Postgres, so it is **not** in `verify`
+- `npm run build` — runs `bootstrap:deploy` first; stop the dev server before, it rewrites `.next`
 - `npm run verify` — typecheck + lint + check:quality + check:ratelimit + check:integrity + smoke + smoke:live + smoke:webrtc + e2e:live + e2e:recording + e2e:quiz + e2e:pricing + e2e:subs + e2e:auth + e2e:buy + e2e:receipt + e2e:freepaid + e2e:bootstrap + e2e:nocourses + e2e:locked + e2e:dark + e2e:dark-hover + e2e:sweep + cleanup:sessions
 
 Test accounts all use password `password123`: `admin@alqimma.com`,
@@ -424,6 +426,58 @@ also meant the flag protected nothing on a staging deploy with `NODE_ENV=staging
 - `PASSWORD_RESET_SECRET` falls back to `JWT_SECRET`, which is convenient and
   means resetting a secret can silently invalidate every session — set the
   dedicated variable on a real deployment.
+
+## A deployment that has to work by pressing Deploy
+
+`npm run build` runs `scripts/deploy-bootstrap.mjs` before `next build`, so a
+deployment with an empty database becomes usable without opening a shell. That
+state is not hypothetical: `alqimma-platform.onrender.com` answered
+`/api/subjects` and `/api/levels` with `[]`, had no admin, and had no way in from
+the browser — `/api/auth/register` only accepts STUDENT and TEACHER on purpose.
+
+It runs three things, and **every one of them is safe to run on every deploy**,
+which is the only property that makes putting it in the build acceptable:
+
+1. `prisma migrate deploy`, through `node node_modules/prisma/build/index.js`
+   rather than `npx prisma` — `npx` is `npx.cmd` on Windows and `execFileSync`
+   cannot run a `.cmd` without a shell, so the `npx` form fails locally and works
+   on Render. A failed migration fails the build on purpose: an app on a schema it
+   does not match turns every query into an unreadable 500.
+2. `seedCatalog(prisma, { force: false })`, **only if the catalog is empty**.
+3. Create an admin **only if the platform has no admin at all**.
+
+### The two traps, both of which would have shipped
+
+- **`create-admin.mjs` is an upsert.** Wiring that into a build would silently
+  reassign the admin's password on *every* deploy, so an operator changes their
+  password and it reverts a few days later with no trace. The bootstrap creates an
+  account only when none exists, and an account that already exists keeps its
+  password — including when `ADMIN_EMAIL` names a different address, which must
+  not promote or reset anything.
+- **`seedCatalog`'s `force: true` is right for a fixture and wrong here.** It
+  rewrites `SubjectAccess.isActive`, so on a deploy it would reactivate every
+  price cell an admin had deliberately switched off. `force: false` creates what
+  is missing and leaves the rest alone. `e2e:bootstrap-deploy` asserts exactly
+  this: it disables a cell, redeploys, and requires it to still be disabled.
+
+### The password has to reach the operator somehow
+
+`ADMIN_PASSWORD` is used when set. When it is not, one is generated and **printed
+once** into the deploy log, which only the dashboard owner can read. Requiring the
+variable would be stricter, but it turns a working deploy into a failed one over a
+missing env var, and `password123` is not an acceptable fallback — it is the
+documented test password for 18 scripts, so a deployment that defaulted to it
+would publish a known credential.
+
+`SKIP_BOOTSTRAP=1` opts out for a lint-only CI job, and a build with no
+`DATABASE_URL` skips the database work rather than failing.
+
+### `.env.example` has to be un-ignored
+
+`.gitignore` used to hold `.env*`, which also matched `.env.example`. So the
+committed template could never be committed, a fresh clone had nothing to copy,
+and every variable had to be rediscovered from the source. It is now negated
+explicitly, while the real `.env` stays ignored.
 
 ## Data integrity
 
