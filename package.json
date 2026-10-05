@@ -19,7 +19,7 @@
                     "e2e:quiz":  "node scripts/e2e-quiz.mjs",
                     "e2e:pricing":  "node scripts/e2e-pricing.mjs",
                     "cleanup:sessions":  "node scripts/cleanup-test-sessions.mjs",
-                    "verify":  "npm run typecheck \u0026\u0026 npm run lint \u0026\u0026 npm run check:quality \u0026\u0026 npm run smoke \u0026\u0026 npm run smoke:live \u0026\u0026 npm run smoke:webrtc \u0026\u0026 npm run e2e:live \u0026\u0026 npm run e2e:recording \u0026\u0026 npm run e2e:quiz \u0026\u0026 npm run e2e:pricing \u0026\u0026 npm run e2e:subs \u0026\u0026 npm run e2e:buy \u0026\u0026 npm run e2e:receipt \u0026\u0026 npm run e2e:freepaid \u0026\u0026 npm run e2e:nocourses \u0026\u0026 npm run e2e:locked \u0026\u0026 npm run e2e:dark \u0026\u0026 npm run e2e:dark-hover \u0026\u0026 npm run cleanup:sessions",
+                    "verify":  "npm run typecheck \u0026\u0026 npm run lint \u0026\u0026 npm run check:quality \u0026\u0026 npm run smoke \u0026\u0026 npm run smoke:live \u0026\u0026 npm run smoke:webrtc \u0026\u0026 npm run e2e:live \u0026\u0026 npm run e2e:recording \u0026\u0026 npm run e2e:quiz \u0026\u0026 npm run e2e:pricing \u0026\u0026 npm run e2e:subs \u0026\u0026 npm run e2e:buy \u0026\u0026 npm run e2e:receipt \u0026\u0026 npm run e2e:freepaid \u0026\u0026 npm run e2e:nocourses \u0026\u0026 npm run e2e:locked \u0026\u0026 npm run e2e:dark \u0026\u0026 npm run e2e:dark-hover \u0026\u0026 npm run e2e:bootstrap \u0026\u0026 npm run e2e:sweep \u0026\u0026 npm run cleanup:sessions",
                     "seed":  "tsx prisma/seed.ts",
                     "postinstall":  "prisma generate",
                     "seed:test":  "tsx prisma/seed-test-accounts.ts",
@@ -30,7 +30,9 @@
                     "e2e:locked":  "node scripts/e2e-live-locked.mjs",
                     "e2e:dark":  "node scripts/e2e-dark.mjs",
                     "e2e:dark-hover":  "node scripts/e2e-dark-hover.mjs",
-                    "e2e:receipt":  "node scripts/e2e-receipt.mjs"
+                    "e2e:receipt":  "node scripts/e2e-receipt.mjs",
+                    "e2e:bootstrap":  "node scripts/e2e-bootstrap.mjs",
+                    "e2e:sweep":  "node scripts/e2e-sweep.mjs"
                 },
     "dependencies":  {
                          "@prisma/client":  "^5.22.0",

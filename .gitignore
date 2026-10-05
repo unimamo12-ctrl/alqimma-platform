@@ -42,3 +42,6 @@ next-env.d.ts
 
 # uploaded media (local storage driver)
 /public/uploads/
+
+# database snapshots - local only, can contain user data and password hashes
+*.backup

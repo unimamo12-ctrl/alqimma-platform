@@ -17,7 +17,7 @@ socket/websocket smoke tests and the browser E2E hit a live server.
 - `npm run lint` — eslint, no output on success
 - `npm run check:quality` — unit checks on the bitrate/frame-rate table
 - `npm run build` — stop the dev server first; it rewrites `.next`
-- `npm run verify` — typecheck + lint + check:quality + smoke + smoke:live + smoke:webrtc + e2e:live + e2e:recording + e2e:quiz + e2e:pricing + e2e:subs + e2e:buy + e2e:receipt + e2e:freepaid + e2e:nocourses + e2e:locked + e2e:dark + e2e:dark-hover + cleanup:sessions
+- `npm run verify` — typecheck + lint + check:quality + smoke + smoke:live + smoke:webrtc + e2e:live + e2e:recording + e2e:quiz + e2e:pricing + e2e:subs + e2e:buy + e2e:receipt + e2e:freepaid + e2e:bootstrap + e2e:nocourses + e2e:locked + e2e:dark + e2e:dark-hover + e2e:sweep + cleanup:sessions
 
 Test accounts all use password `password123`: `admin@alqimma.com`,
 `teacher@alqimma.com`, `student@alqimma.com`.
@@ -341,6 +341,36 @@ either may be text-only, picture-only, or both. Related decisions worth keeping:
   multi-instance deploy. Moving to object storage means only the value shape in
   the validator and the `ImagePicker` need to change.
 
+## The catalog, and platforms that were never seeded
+
+A course needs a subject *and* a level, and both were **read-only** until this was
+fixed: `/api/subjects` and `/api/levels` had a GET route and nothing else, and no
+UI anywhere created them. So a deployment whose database never ran `npm run seed`
+had an empty catalog and no way out of it from the browser — `/teacher/courses`
+rendered two permanently empty dropdowns that could not be submitted, and the only
+fix was a shell. That is exactly the state
+`alqimma-platform.onrender.com` was in: `/api/subjects` and `/api/levels` both
+returned `[]`.
+
+- **`POST /api/admin/subjects`, `POST /api/admin/levels`** (admin-only) and the
+  matching `DELETE`s. A subject is created together with its three
+  `SubjectAccess` price cells, because a subject with no prices has nothing a
+  student can buy — it looks configured and is unusable. The `name` is latin and
+  unique because it is the join key everywhere else (`Course.subject.name`,
+  `Teacher.subjects`, the seed).
+- **Deletion refuses while anything references it** (`409`), naming the count. A
+  course is a teacher's work and a subscription is a student's money; cascading
+  either destroys real data. Deleting a subject also removes its price cells,
+  which have no meaning without it.
+- **The admin "المواد والمستويات" tab is the default view** of `/admin/content`,
+  since on a fresh deployment it is the only tab that can do anything.
+- **The teacher's form refuses to pretend.** With an empty catalog it renders an
+  explanation and a link, not two dead dropdowns.
+- **`npm run e2e:bootstrap`** covers the whole path. It fakes the empty catalog by
+  *intercepting* the two GETs rather than wiping the real rows — wiping would
+  orphan the seeded course — then adds a subject and a level through the UI,
+  creates a course against both, and checks the delete guards.
+  `scripts/seed-catalog.mjs` restores just the catalog and nothing else.
 ## Dark mode
 
 Class-based, toggled in the navbar and in the mobile drawer, persisted under
@@ -428,6 +458,34 @@ Class-based, toggled in the navbar and in the mobile drawer, persisted under
     serialises modern colours that way and an `rgb()`-only parse reports them all
   as "not dark". Elements with an inline background are skipped: the subject
   colour strip is deliberately the brand colour in both modes.
+## Crawling for errors instead of guessing URLs
+
+`npm run e2e:sweep` walks the app's **real** navigation graph — it starts at `/`
+and follows the links the app renders — as each role, in light and dark, and
+fails on any console error, uncaught exception, failed request, 4xx/5xx response
+or broken image. Around 184 page visits.
+
+It replaced a hand-written route list, and that is the point. The list reported
+two "errors" that were both its own mistakes: a 403 on a live session owned by a
+*different* teacher (correct authorization) and a 404 on a URL nothing in the app
+links to. Guessing URLs finds the sweep's bugs, not the app's. Crawling cannot
+report a page the product does not expose.
+
+Its first real finding was three notifications linking to a deleted quiz, so
+clicking them 404'd. `DELETE /api/quizzes/[id]` now removes those notifications in
+the same transaction as the quiz — publishing writes one per assigned student, and
+the notification row is the only record that the target ever existed, so nothing
+else would ever tell a student to stop following a dead link.
+
+Two things are deliberately exempted, both narrowly:
+
+- the signed-out session probe (`/api/auth/me`), which is how the public pages
+  decide to render a sign-in state;
+- a 401 from `/api/live` **for the public role only**, because the public live
+  page probes that endpoint and renders a sign-in state on 401.
+
+Both are scoped rather than pattern-matched, so widening them to "any 401" would
+hide the thing the sweep exists to catch.
 ## Live video quality
 
 Every quality decision lives in `src/lib/webrtc/media-quality.ts`. Before this

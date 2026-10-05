@@ -229,7 +229,21 @@ export async function DELETE(_request: NextRequest, { params }: Params) {
       );
     }
 
-    await prisma.quiz.delete({ where: { id } });
+    /*
+     * The quiz and the notifications that point at it go together.
+     *
+     * Publishing writes a notification per assigned student linking to
+     * `/student/quizzes/<id>`. Deleting only the quiz left those links in place,
+     * so the notifications page offered dead links that 404 on click — the rows
+     * are the only record that the target ever existed, so nothing else would
+     * ever have told a student to stop following one.
+     */
+    await prisma.$transaction([
+      prisma.notification.deleteMany({
+        where: { OR: [{ link: `/student/quizzes/${id}` }, { link: `/teacher/quizzes/${id}` }] },
+      }),
+      prisma.quiz.delete({ where: { id } }),
+    ]);
 
     return NextResponse.json({ success: true, message: 'تم حذف المسودة' });
   } catch {

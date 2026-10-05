@@ -68,6 +68,12 @@ export default function TeacherCoursesPage() {
   const effectiveSubjectId = subjectId || subjectList[0]?.id || '';
   const effectiveLevelId = levelId || levelList[0]?.id || '';
 
+  // A course needs both, so the form is unusable until the platform has a
+  // catalog. `loading` is excluded: before the fetches settle both lists are
+  // empty, and that must not read as "not configured yet".
+  const catalogLoaded = !subjects.loading && !levels.loading;
+  const catalogReady = subjectList.length > 0 && levelList.length > 0;
+
   const subjectName = (id: string) => {
     const s = subjectList.find((x) => x.id === id);
     return s?.nameAr ?? s?.name ?? id;
@@ -143,8 +149,32 @@ export default function TeacherCoursesPage() {
               يدفع الطالب ثم تراجع الإدارة الطلب قبل أن ينضم.
             </p>
 
-        {showForm && (
+        {showForm && catalogLoaded && (
           <Card className="p-5">
+            {!catalogReady ? (
+              /*
+               * An empty catalog makes this form impossible to submit, and two
+               * empty dropdowns read as "the site is broken" rather than "nobody
+               * has set the platform up yet". Only an admin can add a subject or
+               * a level, so the pointer has to name that.
+               */
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                <p className="font-medium">لا توجد مواد أو مستويات في المنصة بعد</p>
+                <p className="mt-1 text-amber-800">
+                  {!subjectList.length && !levelList.length
+                    ? 'لا يمكن إنشاء دورة قبل ضبط المواد والمستويات. هذا من صلاحيات الإدارة فقط.'
+                    : !subjectList.length
+                      ? 'لا توجد مواد بعد، فلا يمكن إنشاء دورة. أضِف مادة من الإدارة أولًا.'
+                      : 'لا توجد مستويات بعد، فلا يمكن إنشاء دورة. أضف مستوى من الإدارة أولًا.'}
+                </p>
+                <Link
+                  href="/admin/content"
+                  className="mt-3 inline-block rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700"
+                >
+                  إعداد المواد والمستويات
+                </Link>
+              </div>
+            ) : (
             <form onSubmit={handleCreate} className="space-y-4">
               <h2 className="font-semibold text-gray-900 dark:text-slate-100">إضافة دورة</h2>
 
@@ -245,10 +275,11 @@ export default function TeacherCoursesPage() {
                   {submitting ? 'جارٍ الحفظ...' : 'حفظ الدورة'}
                 </button>
                 <Button variant="secondary" onClick={() => setShowForm(false)}>
-                  إلغاء
-                </Button>
-              </div>
-            </form>
+إلغاء
+                  </Button>
+                </div>
+              </form>
+            )}
           </Card>
         )}
 

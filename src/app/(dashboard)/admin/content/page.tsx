@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useApiData } from '@/lib/hooks/use-api';
 import { Icon, type IconName } from '@/components/icons';
+import { CatalogTab } from './catalog-tab';
 
 interface CourseRow {
   id: string;
@@ -57,7 +58,7 @@ export default function AdminContentPage() {
   const subjectsRes = useApiData<{ subjects: SubjectOption[] }>('/api/subjects');
   const levelsRes = useApiData<{ levels: LevelOption[] }>('/api/levels');
 
-  const [tab, setTab] = useState<'courses' | 'live'>('courses');
+  const [tab, setTab] = useState<'catalog' | 'courses' | 'live'>('catalog');
   const [editingCourse, setEditingCourse] = useState<CourseRow | null>(null);
   const [flash, setFlash] = useState('');
   const [problem, setProblem] = useState('');
@@ -149,9 +150,13 @@ export default function AdminContentPage() {
       <div className="flex gap-1 border-b border-gray-200 dark:border-slate-700">
         {(
           [
-            { key: 'courses' as const, label: `الدورات (${courses.length})` },
-            { key: 'live' as const, label: `البثوث (${sessions.length})` },
-          ]
+{ key: 'courses' as const, label: `الدورات (${courses.length})` },
+              { key: 'live' as const, label: `البثوث (${sessions.length})` },
+              // The catalog comes first: with no subjects and no levels, no
+              // course can be created at all, so on a fresh deployment this is
+              // the only tab that does anything.
+              { key: 'catalog' as const, label: 'المواد والمستويات' },
+            ]
         ).map((item) => (
           <button
             key={item.key}
@@ -168,7 +173,9 @@ export default function AdminContentPage() {
         ))}
       </div>
 
-      {tab === 'courses' ? (
+      {tab === 'catalog' ? (
+          <CatalogTab />
+        ) : tab === 'courses' ? (
         coursesRes.loading ? (
           <Loading />
         ) : courses.length === 0 ? (
