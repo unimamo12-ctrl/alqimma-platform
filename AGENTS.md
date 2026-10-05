@@ -479,6 +479,36 @@ committed template could never be committed, a fresh clone had nothing to copy,
 and every variable had to be rediscovered from the source. It is now negated
 explicitly, while the real `.env` stays ignored.
 
+### Recovering a lost admin password
+
+The rule above creates a lockout: once an admin exists, nothing touches its
+password, so an operator who loses the generated one has no way back. That needs
+an escape hatch that cannot fire by accident.
+
+`ADMIN_FORCE_RESET=1` **with** `ADMIN_PASSWORD` resets the account named by
+`ADMIN_EMAIL`. Both are required, and the second one is the point:
+
+- **An ordinary redeploy never resets.** With no flag, an existing account is left
+  completely alone. This is the property that stops a push from silently
+  reassigning an admin credential.
+- **The flag alone fails the build.** It will not generate a password, because a
+  build that reports success while changing nothing is how an operator ends up
+  locked out while believing they reset it. `e2e:bootstrap-deploy` asserts the
+  build exits non-zero, that the message names `ADMIN_PASSWORD`, and that the
+  stored hash is byte-identical afterwards.
+- **A reset only ever writes a supplied password.** There is no generated variant
+  on this path, for the same reason: an unknown password is not a reset.
+- **Leaving the flag set is the dangerous state, not the reset.** It silently
+  reassigns the password on every later deploy, including one triggered by anyone
+  else pushing a commit. So the build prints a boxed warning on every run while
+  it is set, last, after everything else.
+
+Note that `password123` works on localhost and not on a deployment, which is not a
+bug: they are different databases. Locally `npm run seed` created
+`admin@alqimma.com` with the password that 18 scripts document, and it must stay
+that way or the whole suite stops being able to sign in. A deployment that never
+ran the seed has a generated password instead.
+
 ## Data integrity
 
 `npm run check:integrity` is in `verify` and asserts the things a cascade cannot

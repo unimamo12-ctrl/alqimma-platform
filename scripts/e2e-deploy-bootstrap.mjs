@@ -98,6 +98,55 @@ try {
   check('a deliberately disabled price cell stays disabled',
     (await prisma.subjectAccess.findUnique({ where: { id: victim.id } })).isActive === false);
   check('the catalog was not duplicated', (await prisma.subject.count()) === subjects);
+
+  /*
+   * The lockout path. Losing the generated password has to be recoverable without a
+   * shell, so ADMIN_FORCE_RESET exists -- but a capability that resets a credential
+   * is exactly the thing that must not fire by accident. Three properties, and the
+   * middle one is the one that matters:
+   *
+   *   an ordinary redeploy never resets   -> the default is safe
+   *   the flag without a password fails   -> it cannot half-work and be believed
+   *   the flag with a password resets      -> there is a way out of the lockout
+   */
+  console.log('\n--- recovering from a lost password ---');
+
+  const beforeReset = await prisma.user.findUnique({ where: { email: 'first@probe.test' } });
+  const knownBefore = await compare('known-good-password', beforeReset.password) === false;
+
+  // the flag on its own must refuse rather than invent a password
+  let refused = false;
+  let refusal = '';
+  try {
+    run('./deploy-bootstrap.mjs', {
+      DATABASE_URL: baseUrl,
+      ADMIN_EMAIL: 'first@probe.test',
+      ADMIN_FORCE_RESET: '1',
+      ADMIN_PASSWORD: '',
+    });
+  } catch (error) {
+    refused = true;
+    refusal = `${error.stdout ?? ''}${error.stderr ?? ''}`;
+  }
+
+  check('ADMIN_FORCE_RESET without a password refuses', refused);
+  check('and it says why', /ADMIN_PASSWORD/.test(refusal) && /Refusing/i.test(refusal));
+  check('the password was left alone',
+    (await prisma.user.findUnique({ where: { email: 'first@probe.test' } })).password === beforeReset.password);
+  check('and it was still not password123', knownBefore);
+
+  run('./deploy-bootstrap.mjs', {
+    DATABASE_URL: baseUrl,
+    ADMIN_EMAIL: 'first@probe.test',
+    ADMIN_FORCE_RESET: '1',
+    ADMIN_PASSWORD: 'known-good-password',
+  });
+
+  const afterReset = await prisma.user.findUnique({ where: { email: 'first@probe.test' } });
+  check('the supplied password now works', await compare('known-good-password', afterReset.password));
+  check('and the previous one no longer does', (await compare('password123', afterReset.password)) === false);
+  check('no extra admin was created by the reset',
+    (await prisma.user.count({ where: { role: 'ADMIN' } })) === 1);
 } finally {
   const cleanup = await client('postgres');
   await cleanup.$executeRawUnsafe(`DROP SCHEMA IF EXISTS "${SCHEMA}" CASCADE`);

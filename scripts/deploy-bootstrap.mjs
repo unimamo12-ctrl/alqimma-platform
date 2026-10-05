@@ -109,32 +109,67 @@ if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
 
 const adminCount = await prisma.user.count({ where: { role: 'ADMIN' } });
 
-if (adminCount > 0) {
+/*
+ * The escape hatch, and the gap it closes.
+ *
+ * Without it, an operator who loses the generated password has no way back: the
+ * default path deliberately refuses to touch an existing account, which is the
+ * only thing standing between a push and a silently reassigned admin credential.
+ * So the reset has to be *possible* -- it just cannot be the default.
+ *
+ * `ADMIN_FORCE_RESET=1` plus `ADMIN_PASSWORD` resets the account named by
+ * `ADMIN_EMAIL`. Both are required:
+ *
+ * - the flag alone is refused rather than quietly generating a password nobody
+ *   knows, because a build that reports success while changing nothing is how an
+ *   operator ends up locked out while believing they reset it;
+ * - a generated password is not offered on this path, for the same reason.
+ */
+const forceReset = ['1', 'true'].includes(String(process.env.ADMIN_FORCE_RESET ?? '').toLowerCase());
+const supplied = process.env.ADMIN_PASSWORD;
+
+if (forceReset && !supplied) {
+  console.error('[bootstrap] ADMIN_FORCE_RESET is set but ADMIN_PASSWORD is empty.');
+  console.error('[bootstrap] Refusing to reset: set ADMIN_PASSWORD to the password you want,');
+  console.error('[bootstrap] then deploy again. Not generating one -- an unknown password is not a reset.');
+  await prisma.$disconnect();
+  process.exit(1);
+}
+
+if (adminCount > 0 && !forceReset) {
   // The common case, and the one that must stay silent: redeploys are frequent and
   // an operator reading a build log should not see a credential every time.
   say(`${adminCount} admin account(s) already exist, no account created`);
 } else {
-  const supplied = process.env.ADMIN_PASSWORD;
   const generated = !supplied;
   const password = supplied ?? crypto.randomBytes(18).toString('base64url');
   const hashed = await bcrypt.hash(password, SALT_ROUNDS);
 
   const existing = await prisma.user.findUnique({ where: { email } });
 
+  if (forceReset && adminCount > 0) {
+    say(`ADMIN_FORCE_RESET is set: resetting the password for ${email}`);
+  }
+
   await prisma.user.upsert({
     where: { email },
     update: {
-      // role and status only. The password is not in this branch on purpose: if
-      // that address already existed, its password is the operator's, not ours.
       role: 'ADMIN',
       status: 'ACTIVE',
       emailVerified: true,
-      ...(existing ? {} : { password: hashed }),
+      // The password is written here only when it is ours to write: a brand new
+      // account, or an explicit force-reset. An ordinary redeploy never reaches
+      // this branch at all, so a live operator password is never overwritten.
+      ...(existing && !forceReset ? {} : { password: hashed }),
     },
     create: { email, password: hashed, role: 'ADMIN', status: 'ACTIVE', emailVerified: true },
   });
 
-  say(`created the first admin account: ${email}`);
+  if (forceReset && adminCount > 0) {
+    say(`password for ${email} has been reset to the ADMIN_PASSWORD value`);
+  } else {
+    say(`created the first admin account: ${email}`);
+  }
 
   if (generated) {
     // Printed once, into a log only the dashboard owner can read. The alternative
@@ -149,8 +184,22 @@ if (adminCount > 0) {
     console.log('  └──────────────────────────────────────────────┘');
     console.log(`  ${email} / كلمة المرور أعلاه — احفظها ثم غيّرها من /admin/password`);
     console.log('');
-  } else {
+  } else if (!forceReset) {
     say('password taken from ADMIN_PASSWORD as supplied');
+  }
+
+  if (forceReset) {
+    // A reset flag left switched on is the dangerous state, not the reset itself:
+    // it silently reassigns the password on every later deploy, including one
+    // triggered by someone else pushing a commit. Say so on every build, and say
+    // it last, so it is the line left in the log.
+    console.log('');
+    console.log('  ┌──────────────────────────────────────────────┐');
+    console.log('  │  ⚠ ADMIN_FORCE_RESET ما زال مفعّلاً            │');
+    console.log('  │  احذفه من Environment فورًا وإلا ستُعاد       │');
+    console.log('  │  كلمة المرور عند كل نشر قادم.                 │');
+    console.log('  └──────────────────────────────────────────────┘');
+    console.log('');
   }
 }
 
