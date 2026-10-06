@@ -427,6 +427,55 @@ await browser.close();
 
   const missing = await fetch(`${BASE}/api/live/audience`, { headers: { Cookie: teacherCookie } });
   check('the audience endpoint requires a courseId', missing.status === 400, `status=${missing.status}`);
+
+  /*
+   * The waiting room, and the two layers that have to agree on it.
+   *
+   * A student may enter before the broadcast starts, from 15 minutes ahead --
+   * that is what `server.ts` does in `join-session`. The HTTP detail route used to
+   * refuse *every* SCHEDULED session instead, so `/api/live` listed a scheduled
+   * session with a join button whose API call answered 403 and the socket that
+   * would have let them in was never reached. Both sides are asserted here at both
+   * edges, because the failure mode is a silent disagreement rather than an error:
+   * each layer is individually reasonable.
+   */
+  const { PrismaClient: PC } = await import('@prisma/client');
+  const db = new PC();
+  // the host comes from the course, not from a login in this scope -- this block
+  // only holds cookies
+  const host = await db.course.findUnique({
+    where: { id: 'course-algebra-3am' },
+    select: { teacherId: true },
+  });
+  const scheduled = await db.liveSession.create({
+    data: {
+      title: 'E2E waiting room',
+      teacherId: host.teacherId,
+      courseId: 'course-algebra-3am',
+      status: 'SCHEDULED',
+      scheduledAt: new Date(Date.now() + 3 * 60 * 60 * 1000),
+    },
+    select: { id: true },
+  });
+
+  try {
+    const far = await fetch(`${BASE}/api/live/${scheduled.id}`, { headers: { Cookie: studentCookie } });
+    check('a student is kept out of a room hours before it opens', far.status === 403, `status=${far.status}`);
+
+    await db.liveSession.update({
+      where: { id: scheduled.id },
+      data: { scheduledAt: new Date(Date.now() + 10 * 60 * 1000) },
+    });
+    const near = await fetch(`${BASE}/api/live/${scheduled.id}`, { headers: { Cookie: studentCookie } });
+    check('and let in from 15 minutes before it opens', near.ok, `status=${near.status}`);
+
+    const teacherFar = await fetch(`${BASE}/api/live/${scheduled.id}`, { headers: { Cookie: teacherCookie } });
+    check('the host teacher is never gated by the waiting window', teacherFar.ok, `status=${teacherFar.status}`);
+  } finally {
+    await db.attendance.deleteMany({ where: { sessionId: scheduled.id } });
+    await db.liveSession.delete({ where: { id: scheduled.id } }).catch(() => undefined);
+    await db.$disconnect();
+  }
 }
 
 // ---- cleanup: only what this run created ----

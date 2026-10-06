@@ -10,6 +10,14 @@ const TRANSITIONS: Record<string, string[]> = {
   CANCELLED: ['SCHEDULED'],
 };
 
+/**
+ * How long before `scheduledAt` a student may enter the waiting room.
+ *
+ * Must equal the window `server.ts` uses in its `join-session` handler, or the
+ * HTTP route and the socket disagree about who may be in the room.
+ */
+const JOIN_OPENS_BEFORE_MS = 15 * 60 * 1000;
+
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -33,11 +41,10 @@ export async function GET(
           select: { id: true, firstName: true, lastName: true },
         },
         course: {
-select: {
-          id: true,
-          title: true,
-          subjectId: true,
-          // FREE courses skip the subscription gate, so the guard below needs it.
+          select: {
+            id: true,
+            title: true,
+            subjectId: true,
             // The published videos are the recording itself. `isRecorded` and
             // `recordingUrl` live on LiveSession, not Course — selecting them
             // here is a hard query error, not a silently empty result.
@@ -54,14 +61,30 @@ select: {
     if (!liveSession) return notFound('الحصة غير موجودة');
 
     /*
-     * A student may open a session that has not started yet (they are early and
-     * want to wait in the room), but only once it is actually LIVE.
+     * A student may wait in the room before a broadcast starts, but only from 15
+     * minutes before it -- and that rule has to be the *same* rule the socket
+     * enforces, because the socket is what actually admits them.
+     *
+     * These two disagreed. `server.ts` opened the room 15 minutes early and
+     * refused with "لم تبدأ الحصة بعد" before that; this route refused every
+     * SCHEDULED session outright. So `/api/live` listed a scheduled session with a
+     * join button whose HTTP call answered 403, and the student's own socket --
+     * which would have let them in -- was never reached. A card offering an action
+     * that 403s is exactly the failure this project keeps guarding against, and
+     * with payments gone there is no longer any concept of being locked to
+     * explain it.
+     *
+     * `JOIN_OPENS_BEFORE_MS` and `scheduledAt` are therefore the contract; if one
+     * side changes, the other has to change with it.
      */
     if (session.role === 'STUDENT' && liveSession.status === 'SCHEDULED') {
-      return NextResponse.json(
-        { success: false, message: 'لم تبدأ الحصة بعد' },
-        { status: 403 }
-      );
+      const opensAt = liveSession.scheduledAt.getTime() - JOIN_OPENS_BEFORE_MS;
+      if (Date.now() < opensAt) {
+        return NextResponse.json(
+          { success: false, message: 'لم تبدأ الحصة بعد' },
+          { status: 403 }
+        );
+      }
     }
 
     // No payment gate: any signed-in student may enter any published room. The
