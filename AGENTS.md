@@ -21,7 +21,7 @@ socket/websocket smoke tests and the browser E2E hit a live server.
 - `npm run bootstrap:deploy` — apply migrations, repair the catalog, create a first admin if there is none
 - `npm run e2e:bootstrap-deploy` — proves the above against a throwaway schema; needs a writable Postgres, so it is **not** in `verify`
 - `npm run build` — runs `bootstrap:deploy` first; stop the dev server before, it rewrites `.next`
-- `npm run verify` — typecheck + lint + check:quality + check:ratelimit + check:integrity + smoke + smoke:live + smoke:webrtc + e2e:live + e2e:recording + e2e:quiz + e2e:pricing + e2e:subs + e2e:auth + e2e:buy + e2e:receipt + e2e:freepaid + e2e:bootstrap + e2e:nocourses + e2e:locked + e2e:dark + e2e:dark-hover + e2e:sweep + cleanup:sessions
+- `npm run verify` — typecheck + lint + check:quality + check:ratelimit + check:integrity + smoke + smoke:live + smoke:webrtc + e2e:live + e2e:recording + e2e:quiz + e2e:auth + e2e:bootstrap + e2e:nocourses + e2e:dark + e2e:dark-hover + e2e:sweep + cleanup:sessions
 
 Test accounts all use password `password123`: `admin@alqimma.com`,
 `teacher@alqimma.com`, `student@alqimma.com`.
@@ -35,248 +35,70 @@ permissions or `getDisplayMedia` prompts, and it cannot cover cross-network ICE.
 Those need TURN (`NEXT_PUBLIC_TURN_URL`, `NEXT_PUBLIC_TURN_USERNAME`,
 `NEXT_PUBLIC_TURN_CREDENTIAL`) and a real two-device run.
 
-# Subscriptions and payments
+# Content access
 
-There are no bundles. Access is sold per subject per access type: a student buys
-LIVE, VIDEO, or EXERCISE for one subject, and that purchase unlocks only that cell.
-The catalog lives in `SubjectAccess` (one row per subject × accessType, with price
-and duration). Admin manages it from `/admin/subscriptions` → "الأسعار".
+**There is no payment feature.** Nothing is sold, nothing is subscribed to, and
+every published course is open to every signed-in student.
 
-The flow:
+This replaced a per-subject purchase model: a student bought LIVE, VIDEO or
+EXERCISE for one subject, each `(student, subject, accessType)` cell was an
+independent row with its own price and expiry, a `PENDING` request unlocked
+nothing until an admin approved it, and Baridi/MOB payments were verified
+manually against a photo of the transfer receipt. Six schema objects went with it
+— `Subscription`, `Payment`, `SubjectAccess`, the `AccessType`,
+`SubscriptionStatus`, `PaymentStatus` and `PaymentMethod` enums, and
+`Course.type` / `Course.price` — in migration
+`20261006000000_remove_payments`.
 
-1. Student browses `/student/subjects`, picks a subject and an access type, and
-   submits a payment method (Baridi or MOB) plus an optional transfer reference.
-2. This creates a `PENDING` subscription and a `PENDING` payment. **Nothing is
-   unlocked yet.**
-3. Admin reviews pending requests at `/admin/subscriptions` → "بانتظار التحقق",
-   confirms the money arrived, and approves. Approval flips the subscription to
-   `ACTIVE` and the payment to `COMPLETED` in one transaction.
-4. Only then does the content gate open.
+What replaced it is **nothing**, deliberately. There is no gate helper and no
+access enum: list endpoints filter on `course.isPublished` and detail routes on
+`getSession`. The absence is the design, so a few consequences are worth
+writing down rather than rediscovering:
 
-Enforcement is in `src/lib/subscriptions/access.ts`. `requireAccess` is the guard
-every content API calls; `accessibleSubjectIds` filters list endpoints so students
-only see what they can actually open. The three content types are gated
-independently: LIVE on `/api/live`, VIDEO on `/api/videos`, EXERCISE on
-`/api/exercises`. A student with only LIVE access gets a 403 on videos and
-exercises — that is the intended behaviour, not a bug.
+- **Authentication is not access control.** `requireTeacherOrAdmin`, `ownsCourse`
+  and the ownership checks in `/api/live/[id]` are what still protect anything,
+  and they are unrelated to money. A content route that lost its auth guard would
+  be a real bug; one that "lost its access gate" is not.
+- **`Course.type` is gone, not merely unused.** Leaving a FREE/PAID column that
+  gates nothing is worse than removing it: a course labelled PAID tells a student
+  something untrue, and a teacher who can still set it has a control with no
+  effect. Publication (`isPublished`) is the only teacher-side switch now, and it
+  does mean something.
+- **`POST /api/subjects` no longer creates price cells.** It used to create three
+  per subject, because a subject with nothing to buy looked configured while being
+  unusable. There is nothing to sell, so a subject is just a subject.
+- **`/api/subjects` no longer returns per-viewer data.** It sent a `subscribed`
+  flag and an active price per cell to decide between "مشترك ✓" and "اشترك الآن".
+  That overlay is meaningless now, so `getSession` went with it and the endpoint is
+  plainly public.
+- **`/api/live` no longer sends `hasAccess`.** It used to list a locked card with
+  "اشترك لتنضم" for a PAID session the student could not join. Every session is
+  joinable, so there is no third state. A student page that still reads
+  `hasAccess` sees `undefined` — which must be read as *not* locked, never as
+  locked.
+- **`/api/live/audience` is now just a headcount.** It existed to answer "can
+  anyone see this broadcast?" when the answer was a payment question, and it
+  carried its own hand-written copy of the subscription predicate rather than
+  going through the shared helper. That duplication is what made it survive a
+  removal of the shared one. It now reports enrolled and total counts, and
+  `livePriceActive` is gone.
+- **`/admin/stats` lost `totalSubscriptions`, `totalPayments` and
+  `totalRevenue`** rather than reporting zeros, so a dashboard tile cannot render
+  a confident `0 دج`.
 
-### FREE and PAID courses
+`npm run check:integrity` asserts the tables and columns are actually **gone**,
+via `information_schema`. A removal that left `subscriptions` behind would
+otherwise pass every other check in that script: nothing selects it, so nothing
+reports an orphan, and it would read as clean while the feature still existed.
+That is the check that can fail for the reason it exists.
 
-`Course.type` is `FREE` | `PAID` and is the teacher's decision, set in
-`/teacher/courses`. It sits *above* the access type:
+The tests that covered the old model are gone rather than rewritten, because they
+asserted behaviour that must not come back: `e2e:subs`, `e2e:buy`,
+`e2e:receipt`, `e2e:freepaid`, `e2e:locked` and `e2e:pricing`. A new one
+should assert that content is reachable with no purchase, not that a purchase
+gates it.
 
-- **FREE** — any signed-in student opens it. No subscription, no payment, no
-  admin approval.
-- **PAID** — needs the subscription cell matching the content type being opened:
-  the live room needs `LIVE`, a video needs `VIDEO`, an exercise needs `EXERCISE`.
-
-Both kinds can sit in the same subject, which is the case that shapes the code. An
-access filter written as `subjectId in allowed` cannot express it: it hides free
-content from the very students it is free for. So `courseAccessFilter` returns one
-`OR` — `{type: 'FREE'} OR {type: 'PAID', subjectId in allowed}` — and every list
-endpoint uses it, and `requireCourseAccess` is the detail-route form of the same
-rule. Both live in `access.ts` so a new content type cannot forget the FREE arm.
-
-A teacher with **no** course is the cold-start path, and it was a dead end: every
-content page needs a course picker, `/teacher/live` said "create a course first
-from the control panel" when no page could create one, and the other three showed
-an empty `اختر الدورة` dropdown with no explanation. All four now render
-`NoCoursesNotice` (`teacher/_components/no-courses-notice.tsx`) *instead of* the
-dropdown, with a button to `/teacher/courses`. `npm run e2e:nocourses` checks each
-page gives a notice, a route out, no dead dropdown, and that the route out really
-does create a course and unblock the teacher.
-
-### Recording a broadcast
-
-Only the host teacher may record: `start-recording`/`stop-recording` in `server.ts`
-both check `canManage`, which is `role === 'ADMIN' || room.hostTeacherId === user.teacherId`.
-A teacher in someone else's room gets a silent no-op. `POST /api/videos` checks
-the same thing on the upload path, so the socket check is not the only gate.
-
-**A finished recording is a draft, and the teacher publishes it.** `saveRecording`
-takes a `publish` flag that defaults to false and the live room leaves it false,
-so a finished broadcast reaches the students only after the teacher presses
-"قبول ونشر" — they get to watch the take back first, and a bad recording is caught
-before a class sees it. `POST /api/videos` likewise treats a recording as a draft
-unless `isPublished === true` explicitly, so no caller inherits the behaviour by
-accident.
-
-The teacher keeps an "إخفاء" toggle afterwards, and `e2e:recording` walks the whole
-round trip — draft → invisible to the student → published → visible → hidden →
-gone → published again. That last leg is the only way to un-send a recording, so
-it is asserted rather than assumed.
-
-Note the trap this replaced: it *was* `publish: true` once, because the extra
-click looked like friction. But "no publish button and no explanation" reads to a
-teacher as "the recording failed", which is a worse outcome than one deliberate
-click. `saveRecording` therefore reports `isPublished` back, and the live room
-says what to do next: "تم حفظ التسجيل كمسودة — انشره من صفحة الفيديوهات".
-
-Two paths then point at the same file: the session's `recordingUrl` (the replay
-link in `/student/live`, gated on `isRecorded`) and the `Video` row (the entry in
-`/student/videos`). Both are written by the same `POST /api/videos` call, so a
-recording cannot end up in one and not the other.
-
-`CourseType` was in the schema and accepted by the API while nothing read it, so a
-FREE course still demanded a subscription. `npm run e2e:freepaid` covers it: a
-student with nothing sees every FREE item and 403 on every PAID one, holding
-`MATH:LIVE` opens the PAID live room but not the PAID video, FREE stays open
-throughout, and flipping the flag takes effect on the next request.
-
-Two consequences worth remembering:
-
-- **Any script that creates a course to test gating must set `type: 'PAID'`.** The
-  schema default is FREE, and FREE is open to everyone, so a default makes every
-  gating assertion pass or fail for the wrong reason. `e2e:subs` and `e2e:buy` do
-  this explicitly.
-- **`npm run seed` forces the demo course back to `PAID`.** It used to default to
-  FREE, which was harmless while nothing read the field; once FREE opened
-  courses, the seed silently un-gated the whole platform.
-
-The seeded `student@alqimma.com` holds **MATH:VIDEO only**, so it can never open
-a broadcast: `/api/live` returns it no joinable session. `test-all-access@` and
-`test-multi-subject@` are the accounts that hold an ACTIVE LIVE subscription.
-
-### Locked broadcasts are listed, not hidden
-
-A student browsing `/student/live` sees three kinds of card, decided server-side:
-
-- **FREE course** → "انضم الآن";
-- **PAID course, LIVE held** → "انضم الآن";
-- **PAID course, LIVE not held** → listed, locked, with "اشترك لتنضم".
-
-The third case used to be filtered out. That was safe and useless: the student
-could not tell a broadcast existed, so there was nothing to sell. `GET /api/live`
-now sends `hasAccess` per session and the card renders the right action, so a
-locked card can never present a join button that 403s.
-
-Two consequences to keep in mind:
-
-- **A PAID session is only offered as lockable when its subject's LIVE price cell
-  is active.** A deactivated cell makes subscribing impossible, so showing the
-  card would be an offer with no way to act on it.
-- **"listed" is not "granted".** Any test that asserted a PAID session is *absent*
-  from a student's list is now asserting the wrong thing and must assert
-  `hasAccess === false` plus a 403 on the detail route instead. `e2e:subs`,
-  `e2e:buy` and `e2e:freepaid` all check joinability, not list length.
-
-The locked card links to `/student/subjects?subject=<id>&access=LIVE`, and that
-page derives the subscribe dialog from the query string during render rather than
-from an effect — the URL and the loaded catalogue are inputs, not events, and the
-dialog closes on its own once the cell reads as subscribed after the reload.
-
-Because the gate is silent, a teacher broadcasting into an empty room cannot tell
-"nobody came" from "nobody is allowed to come". `GET /api/live/audience?courseId=`
-answers that before the broadcast starts, and the create form in
-`/teacher/live` shows the eligible count, their names, and a warning when it is
-zero. Its `eligibleCount` uses the same predicate as `/api/live`
-(ACTIVE + unexpired LIVE subscription for the course's subject), so it must never
-be widened — `e2e:live` asserts every student in the audience can open the
-session and that a student outside it is refused. A deactivated `SubjectAccess`
-LIVE cell is reported separately as `livePriceActive`, because it blocks *new*
-subscriptions without invalidating the ones students already hold.
-
-Payment methods are `BARIDI` (BaridiMob / CCP transfer) and `MOB` (mobile payment).
-Both require manual admin verification; there is no automatic payment confirmation.
-
-### Receipt photo
-
-`Payment.proofUrl` holds a picture of the transfer receipt the student attaches
-when requesting a subscription, and the admin panel renders it as a thumbnail that
-opens the full image. BaridiMob and MOB are both manual, so the reference number
-alone leaves the admin guessing.
-
-- **It is uploaded before the subscription exists**, through
-  `POST /api/subscriptions/proof`, and the returned URL is then sent with
-  `POST /api/subscriptions`. That endpoint is student-only and always
-  `kind=image`, so it reuses the storage helpers without opening `/api/uploads` to
-  students — that route is teacher/admin, and admitting them would let any student
-  push arbitrary images into the platform. It also keeps the 10MB image cap instead
-  of the video/document ones.
-- **`proofUrl` is only accepted as `/uploads/image/<name>`.** Same rule the quiz
-  image fields use, and for the same reason: without it the column is an open
-  proxy that makes the admin panel fetch an arbitrary host and leaks its IP.
-  `e2e:receipt` asserts a hand-crafted `https://…` is refused with a 400.
-- **A failed upload must not block the purchase.** The receipt is optional: on
-  error `proofUrl` stays empty, the error is shown, and the subscription still
-  goes through on the reference alone.
-- **Watch for the field being stripped on the way out.** Both admin endpoints
-  hand-pick payment fields, and a `proofUrl` missing from that list compiles
-  cleanly and simply renders no receipt. It failed exactly that way once.
-- The dialog clears the receipt on close, or a half-finished upload would follow
-  the student to the next cell they subscribe to.
-
-### Every cell is independent
-
-One cell is one `(student, subject, accessType)` row, and `Subscription` carries
-`@@unique([studentId, subjectId, accessType])`. Nothing grants a neighbouring cell,
-in either direction. `npm run e2e:subs` proves all of it, and is the place to add
-a case if this is ever extended:
-
-- Same subject, different type: `MATH:LIVE` serves no video and no exercise, and
-  both are `403` when opened directly.
-- Different subject, same type: `MATH:LIVE` does not reveal a `PHYSICS` session.
-- Two cells side by side: `MATH:LIVE` + `PHYSICS:VIDEO` each work, and the video
-  list contains the physics video and not the math one.
-- Expiry is per cell: an expired `MATH:VIDEO` does not close `MATH:LIVE`, and is
-  itself not served.
-- `PENDING`/`REJECTED` grant nothing, including on a direct URL.
-- Approval is per cell: approving `MATH:LIVE` leaves a `PHYSICS:LIVE` sibling at
-  `REJECTED`, settles only the approved payment, and invents no payment for the
-  sibling.
-- The unique index is what stops a second purchase of a held cell; the insert must
-  throw, not create a duplicate entitlement. `POST /api/subscriptions` also checks
-  first and answers `409` with a reason, so a duplicate is a message rather than a
-  raw unique-violation or a 500.
-
-`npm run e2e:buy` covers the same journey through the UI a student actually uses:
-`/student/subjects` → the "اشترك الآن" dialog → Baridi or MOB plus an optional
-reference → `PENDING` unlocking nothing → the student's own subscriptions page →
-`409` on a repeat purchase → admin approval → and the bought cell opening while
-its siblings stay shut. It builds its own student and its own MATH content and
-removes both.
-
-Two traps in that script worth not re-learning:
-
-- Do **not** pick the cell under test by indexing the flat list of "اشترك الآن"
-  buttons. It silently buys whichever subject sits in that slot, and every later
-  assertion is then about a cell the student never bought — which reads as a gate
-  failure. Locate the subject `Card` by its heading instead.
-- The payment buttons' accessible names include their hint, so the MOB option is
-  "موب دفع بالهاتف". `getByRole('button', { name: 'موب', exact: true })` finds
-  nothing and `has-text("موب")` also matches "بريدي موب"; use `/^موب/`.
-
-Assertions there are by **session/video id, never by count**. The seeded database
-already contains MATH live sessions and videos, so counting tests the seed and
-passes even when the gate leaks.
-
-`scripts/e2e-subscriptions.mjs` cannot import `hashPassword` from the app: it
-lives behind the `@/` alias, which plain node does not resolve. It calls
-`bcryptjs` at 12 rounds instead, matching `SALT_ROUNDS`.
-
-### Editing a price
-
-`/admin/subscriptions` → "الأسعار" edits `SubjectAccess`. Two defects made a correct
-save look like it did nothing, both now covered by `npm run e2e:pricing`:
-
-- **A successful save must patch the table from the server's response.** Nothing
-  refetched the catalog, so the table kept rendering the old price and the admin
-  re-edited the same value. Any list that is written to must refresh from the
-  write result, not from a cached fetch.
-- **`z.coerce.number()` maps `''` to `0`, which passes `.min(0)`.** Clearing the
-  price box to retype it therefore saved 0 دج and made the subject free without
-  any warning. Both numeric fields are `z.preprocess`ed so a blank string becomes
-  `undefined` and fails validation, and the client refuses to submit an empty
-  price, a 0/fractional duration, or a negative price.
-- The editor renders *above* the table. It used to sit below it, so on a long
-  catalog clicking تعديل appeared to do nothing at all.
-- Deactivating a cell is reachable from the editor only. There is no separate
-  toggle, and `isActive` must be sent back on every price write or a price edit
-  would silently re-enable a cell the admin had disabled.
-- `npm run seed` forces `SubjectAccess.isActive` back to `true` (and
-  `Course.isPublished` likewise). A test that deactivates a cell must not be able
-  to leave one invisible *and* blocking every new subscription for it.
-
+# Quizzes
 # Quizzes
 
 Lifecycle is `DRAFT → PUBLISHED → AVAILABLE → IN_PROGRESS → COMPLETED → EXPIRED →
@@ -455,10 +277,12 @@ which is the only property that makes putting it in the build acceptable:
   password — including when `ADMIN_EMAIL` names a different address, which must
   not promote or reset anything.
 - **`seedCatalog`'s `force: true` is right for a fixture and wrong here.** It
-  rewrites `SubjectAccess.isActive`, so on a deploy it would reactivate every
-  price cell an admin had deliberately switched off. `force: false` creates what
-  is missing and leaves the rest alone. `e2e:bootstrap-deploy` asserts exactly
-  this: it disables a cell, redeploys, and requires it to still be disabled.
+  rewrites each subject's `nameAr`, `icon` and `color`, so on a deploy it would
+  silently overwrite an admin who had renamed a subject. `force: false` creates
+  what is missing and leaves the rest alone. `e2e:bootstrap-deploy` asserts exactly
+  this: it renames a subject, redeploys, and requires the new name to survive.
+  (It used to assert the same property about a price cell, back when there were
+  price cells to disable.)
 
 ### The password has to reach the operator somehow
 

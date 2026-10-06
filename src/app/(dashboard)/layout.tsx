@@ -20,12 +20,11 @@ interface RoleItem {
 
 const STUDENT_ITEMS: RoleItem[] = [
   { href: '/student', label: 'لوحة التحكم', icon: 'home' },
-  { href: '/student/subjects', label: 'المواد والاشتراكات', icon: 'book' },
+  { href: '/student/subjects', label: 'المواد', icon: 'book' },
   { href: '/student/live', label: 'البث المباشر', icon: 'broadcast' },
   { href: '/student/videos', label: 'الفيديوهات', icon: 'video' },
   { href: '/student/exercises', label: 'التمارين', icon: 'penLine' },
   { href: '/student/quizzes', label: 'الاختبارات', icon: 'layers' },
-  { href: '/student/subscriptions', label: 'اشتراكاتي', icon: 'shield' },
   { href: '/student/notifications', label: 'الإشعارات', icon: 'sparkle' },
 ];
 
@@ -47,7 +46,6 @@ const ADMIN_ITEMS: RoleItem[] = [
   { href: '/admin/students', label: 'الطلاب', icon: 'users' },
   { href: '/admin/teachers', label: 'الأساتذة', icon: 'graduation' },
   { href: '/admin/content', label: 'المحتوى', icon: 'book' },
-  { href: '/admin/subscriptions', label: 'الاشتراكات والدفع', icon: 'shield' },
   { href: '/admin/password', label: 'كلمة السر', icon: 'shield' },
 ];
 

@@ -176,8 +176,7 @@ try {
     ['/admin/students', 'admin students'],
     ['/admin/teachers', 'admin teachers'],
     ['/admin/content', 'admin content'],
-    ['/admin/subscriptions', 'admin subscriptions'],
-  ]) {
+    ]) {
     await page.goto(`${BASE}${route}`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(1200);
     await checkHoverRows(page, label);
@@ -188,8 +187,7 @@ try {
   // and the student-facing tables
   const s = await login('student@alqimma.com');
   for (const [route, label] of [
-    ['/student/subscriptions', 'student subscriptions'],
-    ['/student/live', 'student live'],
+      ['/student/live', 'student live'],
   ]) {
     await s.page.goto(`${BASE}${route}`, { waitUntil: 'networkidle' });
     await s.page.waitForTimeout(1200);

@@ -21,15 +21,6 @@ interface Detail {
   phone: string | null;
   level: string | null;
   class: string | null;
-  subscriptions: {
-    id: string;
-    accessType: string;
-    status: string;
-    startDate: string;
-    endDate: string;
-    subject: { name: string; nameAr: string | null };
-    payments: { id: string; amount: string | number; method: string; status: string }[];
-  }[];
   enrollments: {
     id: string;
     course: { id: string; title: string; isPublished: boolean; subject: { nameAr: string | null; name: string }; level: { name: string } };
@@ -59,18 +50,9 @@ interface Detail {
   }[];
 }
 
-const ACCESS_AR: Record<string, string> = {
-  LIVE: 'بث مباشر',
-  VIDEO: 'فيديوهات',
-  EXERCISE: 'تمارين',
-};
-
 const STATUS_STYLES: Record<string, string> = {
-  PENDING: 'bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300',
   ACTIVE: 'bg-green-50 dark:bg-emerald-500/10 text-green-700 dark:text-emerald-300',
-  REJECTED: 'bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-300',
   EXPIRED: 'bg-gray-100 dark:bg-slate-800 text-gray-500 dark:text-slate-400',
-  CANCELLED: 'bg-gray-100 dark:bg-slate-800 text-gray-500 dark:text-slate-400',
 };
 
 export default function AdminStudentDetailPage() {
@@ -203,43 +185,10 @@ export default function AdminStudentDetailPage() {
 
       {/* Numbers */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <Tile label="اشتراكات" value={student.subscriptions.length} tone="indigo" />
         <Tile label="دورات مسجّل بها" value={student.enrollments.length} tone="purple" />
         <Tile label="محاولات اختبار" value={student.quizAttempts.length} tone="amber" />
         <Tile label="نسبة الاختبارات" value={avgPercent === null ? '—' : `${avgPercent}%`} tone="green" />
       </div>
-
-      {/* Subscriptions */}
-      <Section title="الاشتراكات" empty="لا يوجد اشتراك">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 dark:bg-slate-900/60 text-gray-600 dark:text-slate-400">
-              <tr>
-                <Th>المادة</Th>
-                <Th>نوع الوصول</Th>
-                <Th>النهاية</Th>
-                <Th>الدفع</Th>
-                <Th>الحالة</Th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100 dark:divide-slate-800">
-              {student.subscriptions.map((sub) => (
-                <tr key={sub.id}>
-                  <td className="px-4 py-3 text-gray-900 dark:text-slate-100">{sub.subject.nameAr ?? sub.subject.name}</td>
-                  <td className="px-4 py-3 text-gray-600 dark:text-slate-400">{ACCESS_AR[sub.accessType] ?? sub.accessType}</td>
-                  <td className="px-4 py-3 text-gray-600 dark:text-slate-400" dir="ltr">{fmt(sub.endDate)}</td>
-                  <td className="px-4 py-3 text-gray-600 dark:text-slate-400 text-xs">
-                    {sub.payments.map((p) => `${Number(p.amount)} دج · ${p.method}`).join('، ') || '—'}
-                  </td>
-                  <td className="px-4 py-3">
-                    <Tag className={STATUS_STYLES[sub.status] ?? ''}>{sub.status}</Tag>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Section>
 
       {/* Enrollments */}
       <Section title="الدورات المسجّل بها" empty="لا يوجد تسجيل في دورة">

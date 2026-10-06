@@ -364,11 +364,15 @@ check(
 await browser.close();
 
 // ---- who can actually watch a broadcast ----
-// "the teacher is live and nobody can join" was impossible to diagnose: the room
-// is empty for a student with no LIVE subscription, and the teacher had no way
-// to tell that apart from nobody turning up. `/api/live/audience` reports the
-// audience using the same predicate `/api/live` enforces, so it must agree with
-// the gate exactly, in both directions.
+// This block existed to catch a disagreement between two copies of one rule: the
+// audience endpoint computed eligibility from ACTIVE LIVE subscriptions, and
+// `/api/live` filtered its list with the shared helper. When the two disagreed a
+// teacher saw "nobody can come" against a session the student could actually
+// open, with nothing to explain the gap.
+//
+// There is no eligibility rule any more, so the disagreement cannot recur -- and
+// the assertions below now guard the two things that are still true:
+
 {
   const apiLogin = async (email) => {
     const res = await fetch(`${BASE}/api/auth/login`, {
@@ -384,7 +388,7 @@ await browser.close();
   };
 
   const teacherCookie = await apiLogin('teacher@alqimma.com');
-  const noSubCookie = await apiLogin('test-no-sub@alqimma.com');
+  const studentCookie = await apiLogin('student@alqimma.com');
 
   const audRes = await fetch(`${BASE}/api/live/audience?courseId=course-algebra-3am`, {
     headers: { Cookie: teacherCookie },
@@ -401,12 +405,24 @@ await browser.close();
   }
   check('everyone in the audience can open the session', refused.length === 0, refused.join(', ') || `${aud.data.eligibleCount} checked`);
 
-  // and someone outside it must not
-  const blocked = await fetch(`${BASE}/api/live/${liveSessionId}`, { headers: { Cookie: noSubCookie } });
-  check('a student outside the audience is refused', blocked.status === 403, `status=${blocked.status}`);
+  // The regression guard for the removal itself: this used to assert a 403 for a
+  // student who held no subscription. A test that silently stopped asserting it
+  // would let the gate come back unnoticed, and one that kept asserting it would
+  // make the removal look like a bug.
+  const studentOpen = await fetch(`${BASE}/api/live/${liveSessionId}`, { headers: { Cookie: studentCookie } });
+  check(
+    'a plain student is not refused for want of a subscription',
+    studentOpen.ok,
+    `status=${studentOpen.status}`,
+  );
+
+  // Removing payment removed *gating*, not *authorization*: still signed out means
+  // still refused.
+  const anonymous = await fetch(`${BASE}/api/live/${liveSessionId}`);
+  check('an anonymous request is still refused', anonymous.status === 401, `status=${anonymous.status}`);
 
   // the audience list is teacher/admin only, and only for their own course
-  const leak = await fetch(`${BASE}/api/live/audience?courseId=course-algebra-3am`, { headers: { Cookie: noSubCookie } });
+  const leak = await fetch(`${BASE}/api/live/audience?courseId=course-algebra-3am`, { headers: { Cookie: studentCookie } });
   check('a student cannot read the audience', leak.status === 401, `status=${leak.status}`);
 
   const missing = await fetch(`${BASE}/api/live/audience`, { headers: { Cookie: teacherCookie } });

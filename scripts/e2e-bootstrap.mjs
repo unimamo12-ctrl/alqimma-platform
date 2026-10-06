@@ -75,7 +75,7 @@ async function fakeEmptyCatalog(page) {
     route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ success: true, data: { subjects: [], accessTypes: [] } }),
+      body: JSON.stringify({ success: true, data: { subjects: [] } }),
     }),
   );
   await page.route('**/api/levels', (route) =>
@@ -136,9 +136,10 @@ try {
     created.levelId = level?.id ?? null;
     ok('both rows exist', Boolean(subject) && Boolean(level));
 
-    // the subject must arrive sellable, not configured-but-unbuyable
-    const cells = subject ? await prisma.subjectAccess.count({ where: { subjectId: subject.id } }) : 0;
-    ok('the new subject got its three price cells', cells === 3, `${cells} cells`);
+    // It used to also assert three price cells arrived with the subject, because a
+    // subject with nothing to sell looked configured while being unusable. There
+    // are no prices now, so the subject row itself is the whole contract.
+    ok('the new subject exists with no orphan config', Boolean(subject));
 
     await page.locator('input[placeholder*="إنجليزي"]').first().fill(TEMP_SUBJECT);
     await page.locator('button:has-text("إضافة مادة")').click();
@@ -227,10 +228,7 @@ try {
 
   // remove only what this run created, in dependency order
   if (created.courseId) await prisma.course.deleteMany({ where: { id: created.courseId } });
-  if (created.subjectId) {
-    await prisma.subjectAccess.deleteMany({ where: { subjectId: created.subjectId } });
-    await prisma.subject.deleteMany({ where: { id: created.subjectId } });
-  }
+  if (created.subjectId) await prisma.subject.deleteMany({ where: { id: created.subjectId } });
   if (created.levelId) await prisma.level.deleteMany({ where: { id: created.levelId } });
   await prisma.user.deleteMany({ where: { email: { in: [adminEmail, teacherEmail] } } });
 

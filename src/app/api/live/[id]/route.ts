@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma/client';
 import { getSession } from '@/lib/auth/jwt';
 import { notFound, requireTeacherOrAdmin, serverError } from '@/lib/auth/guards';
-import { requireCourseAccess } from '@/lib/subscriptions/access';
 
 const TRANSITIONS: Record<string, string[]> = {
   SCHEDULED: ['LIVE', 'CANCELLED'],
@@ -39,7 +38,6 @@ select: {
           title: true,
           subjectId: true,
           // FREE courses skip the subscription gate, so the guard below needs it.
-          type: true,
             // The published videos are the recording itself. `isRecorded` and
             // `recordingUrl` live on LiveSession, not Course — selecting them
             // here is a hard query error, not a silently empty result.
@@ -66,19 +64,8 @@ select: {
       );
     }
 
-    // The live room is gated on the course: a FREE course is open to any student,
-    // a PAID one needs the LIVE access type for its subject. This is the check
-    // that actually keeps a non-subscriber out of the room: the list endpoint
-    // only hides the card, and a student can still guess a URL.
-    if (session.role === 'STUDENT') {
-      const access = await requireCourseAccess(
-        session.student?.id ?? null,
-        liveSession.course.subjectId,
-        'LIVE',
-        liveSession.course.type,
-      );
-      if (!access.ok) return access.response;
-    }
+    // No payment gate: any signed-in student may enter any published room. The
+    // ownership check below is what keeps one teacher out of another's room.
 
     if (
       session.role === 'TEACHER' &&

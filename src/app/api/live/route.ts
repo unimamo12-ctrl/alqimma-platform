@@ -3,7 +3,6 @@ import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma/client';
 import { getSession } from '@/lib/auth/jwt';
 import { requireTeacherOrAdmin, ownsCourse } from '@/lib/auth/guards';
-import { accessibleSubjectIds } from '@/lib/subscriptions/access';
 
 export async function GET(request: NextRequest) {
   try {
@@ -24,50 +23,22 @@ export async function GET(request: NextRequest) {
 
     if (session.role === 'STUDENT') {
       /*
-       * A student sees three kinds of session:
+       * No payment gate: a student sees every published session, joinable.
        *
-       *  - in a FREE course: joinable, no subscription involved;
-       *  - in a PAID course they hold LIVE access for: joinable;
-       *  - in a PAID course they do *not* hold it for: listed but locked.
-       *
-       * The third kind used to be filtered out, which was defensible and useless:
-       * a student could not tell there was a broadcast to subscribe to, because
-       * the card simply was not there, and the only route to the subscribe button
-       * was a course they happened to already know about. A locked card that
-       * says "اشترك" is what turns an existing broadcast into a sale.
-       *
-       * A PAID session is only offered as lockable when the LIVE price cell for
-       * its subject is active. If it is deactivated, subscribing is impossible, so
-       * showing the card would be a dead end with no way to act on it.
+       * This route used to build a per-student allow-list from ACTIVE
+       * subscriptions, list a locked card for the rest, and send `hasAccess` per
+       * session so the card could offer "اشترك" instead of a join button. With
+       * no subscriptions there is nothing to be locked against, so the whole
+       * branch collapses to "published courses only" and `hasAccess` is gone from
+       * the payload. A student page that still reads `hasAccess` sees `undefined`,
+       * which the card must treat as *not* locked.
        */
-      const studentId = session.student?.id ?? null;
-      const [allowedSubjects, activeLiveCells] = await Promise.all([
-        studentId ? accessibleSubjectIds(studentId, 'LIVE') : Promise.resolve([]),
-        prisma.subjectAccess.findMany({
-          where: { accessType: 'LIVE', isActive: true },
-          select: { subjectId: true },
-        }),
-      ]);
-
-      const subscribable = activeLiveCells.map((cell) => cell.subjectId);
-      const offerable = [...new Set([...allowedSubjects, ...subscribable])];
-
       where.OR = [
         { status: { in: ['SCHEDULED', 'LIVE'] } },
         { status: 'ENDED', isRecorded: true, recordingUrl: { not: null } },
       ];
 
-      where.course = {
-        AND: [
-          { isPublished: true },
-          {
-            OR: [
-              { type: 'FREE' },
-              ...(offerable.length > 0 ? [{ type: 'PAID' as const, subjectId: { in: offerable } }] : []),
-            ],
-          },
-        ],
-      };
+      where.course = { isPublished: true };
     } else if (session.role === 'TEACHER') {
       if (!session.teacher) {
         return NextResponse.json(
@@ -102,9 +73,6 @@ export async function GET(request: NextRequest) {
           select: {
             id: true,
             title: true,
-            // the student's UI decides between "join now" and "subscribe" from
-            // these three, so they have to travel with every session
-            type: true,
             subjectId: true,
             subject: { select: { id: true, name: true, nameAr: true } },
             level: { select: { name: true } },
@@ -114,25 +82,9 @@ export async function GET(request: NextRequest) {
       orderBy: { scheduledAt: 'asc' },
     });
 
-    // A student needs to be told, per session, whether they may join it — a
-    // locked card that still renders a join button is a 403 waiting to happen.
-    const allowedSubjects =
-      session.role === 'STUDENT' && session.student
-        ? await accessibleSubjectIds(session.student.id, 'LIVE')
-        : null;
-
-    const payload =
-      allowedSubjects === null
-        ? sessions
-        : sessions.map((row) => ({
-            ...row,
-            hasAccess:
-              row.course.type === 'FREE' || allowedSubjects.includes(row.course.subjectId),
-          }));
-
     return NextResponse.json({
       success: true,
-      data: { sessions: payload },
+      data: { sessions },
     });
   } catch {
     return NextResponse.json(

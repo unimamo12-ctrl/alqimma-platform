@@ -20,8 +20,6 @@ export async function GET() {
       totalVideos,
       totalFiles,
       totalLiveSessions,
-      totalSubscriptions,
-      totalPayments,
       activeStudents,
       activeTeachers,
     ] = await Promise.all([
@@ -31,16 +29,13 @@ export async function GET() {
       prisma.video.count(),
       prisma.file.count(),
       prisma.liveSession.count(),
-      prisma.subscription.count(),
-      prisma.payment.count(),
       prisma.user.count({ where: { role: 'STUDENT', status: 'ACTIVE' } }),
       prisma.user.count({ where: { role: 'TEACHER', status: 'ACTIVE' } }),
     ]);
 
-    const totalRevenue = await prisma.payment.aggregate({
-      _sum: { amount: true },
-      where: { status: 'COMPLETED' },
-    });
+    // No revenue line, and no subscription/payment counts. All three went with the
+    // payment feature, and leaving the keys in the response would have the admin
+    // dashboard render `undefined` tiles.
 
     return NextResponse.json({
       success: true,
@@ -52,11 +47,8 @@ export async function GET() {
           totalVideos,
           totalFiles,
           totalLiveSessions,
-          totalSubscriptions,
-          totalPayments,
           activeStudents,
           activeTeachers,
-          totalRevenue: totalRevenue._sum.amount || 0,
         },
       },
     });

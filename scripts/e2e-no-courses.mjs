@@ -99,14 +99,18 @@ try {
   ok('a usable course form is on screen', (await page.locator('input[placeholder*="جبر"]').count()) > 0);
 
   // and it really does unblock the teacher
+  //
+  // There used to be a "مجاني" / "يتطلب اشتراكًا" choice here, and this test
+  // clicked the free side before saving. The form has one button now, so the click
+  // is gone with it -- and the assertion below stopped reporting `created.type`,
+  // because the column went with the payment feature.
   await page.locator('input[placeholder*="جبر"]').fill('E2E UNBLOCK');
-  await page.getByRole('button', { name: /^مجاني/ }).click();
   await page.locator('button:has-text("حفظ الدورة")').click();
   await page.waitForTimeout(2500);
 
   const created = await prisma.course.findFirst({ where: { title: 'E2E UNBLOCK', teacherId: user.teacher.id } });
   createdCourseId = created?.id ?? null;
-  ok('the course can be created from there', Boolean(created), created ? `type=${created.type}` : 'not created');
+  ok('the course can be created from there', Boolean(created), created ? `id=${created.id}` : 'not created');
 
   await page.goto(`${BASE}/teacher/live`, { waitUntil: 'networkidle' });
   await page.waitForTimeout(1200);

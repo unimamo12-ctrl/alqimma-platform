@@ -58,10 +58,6 @@ export async function GET(
             _count: { select: { refreshTokens: true } },
           },
         },
-        subscriptions: {
-          include: { payments: true, subject: { select: { id: true, name: true, nameAr: true } } },
-          orderBy: { createdAt: 'desc' },
-        },
         enrollments: {
           include: {
             course: {
@@ -218,25 +214,23 @@ export async function DELETE(
       return NextResponse.json({ success: false, message: 'الطالب غير موجود' }, { status: 404 });
     }
 
-    const [attempts, attendance, subscriptions, enrollments] = await Promise.all([
+const [attempts, attendance, enrollments] = await Promise.all([
       prisma.quizAttempt.count({ where: { studentId: id } }),
       prisma.attendance.count({ where: { studentId: id } }),
-      prisma.subscription.count({ where: { studentId: id } }),
       prisma.enrollment.count({ where: { studentId: id } }),
     ]);
 
     const reasons: string[] = [];
     if (attempts) reasons.push(`${attempts} محاولة اختبار`);
     if (attendance) reasons.push(`${attendance} سجل حضور`);
-    if (subscriptions) reasons.push(`${subscriptions} اشتراك`);
     if (enrollments) reasons.push(`${enrollments} تسجيل في دورة`);
 
     if (reasons.length > 0) {
       return NextResponse.json(
         {
           success: false,
-          message: `لا يمكن حذف طالب لديه سجلات (${reasons.join('، ')}).يمكنك إيقاف حسابه بدل الحذف.`,
-          data: { attempts, attendance, subscriptions, enrollments },
+          message: `لا يمكن حذف طالب له سجلات (${reasons.join('، ')}). احذفها يدويًا في قاعدة البيانات.`,
+          data: { attempts, attendance, enrollments },
         },
         { status: 409 },
       );

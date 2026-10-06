@@ -21,21 +21,11 @@ export async function GET() {
     }
 
     const studentId = session.student.id;
-    const now = new Date();
 
-    const [enrolledCourses, liveNow, upcoming, activeAccess, attendances] = await Promise.all([
+    const [enrolledCourses, liveNow, upcoming, attendances] = await Promise.all([
       prisma.enrollment.count({ where: { studentId } }),
       prisma.liveSession.count({ where: { status: 'LIVE' } }),
       prisma.liveSession.count({ where: { status: 'SCHEDULED' } }),
-      prisma.subscription.findMany({
-        where: {
-          studentId,
-          status: 'ACTIVE',
-          startDate: { lte: now },
-          endDate: { gte: now },
-        },
-        select: { accessType: true, subject: { select: { nameAr: true, name: true } } },
-      }),
       prisma.attendance.findMany({
         where: { studentId, session: { status: { in: ['ENDED', 'LIVE'] } } },
         select: { duration: true, leaveTime: true },
@@ -54,7 +44,6 @@ export async function GET() {
       success: true,
       data: {
         enrolledCourses,
-        activeSubscriptions: activeAccess,
         liveNow,
         upcoming,
         attendanceRate,

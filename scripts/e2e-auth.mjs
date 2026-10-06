@@ -157,8 +157,6 @@ try {
 } finally {
   await browser.close();
   if (created.length) {
-    await prisma.payment.deleteMany({ where: { subscription: { student: { userId: { in: created } } } } });
-    await prisma.subscription.deleteMany({ where: { student: { userId: { in: created } } } });
     await prisma.student.deleteMany({ where: { userId: { in: created } } });
     await prisma.user.deleteMany({ where: { id: { in: created } } });
   }

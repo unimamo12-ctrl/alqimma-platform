@@ -92,7 +92,7 @@ const levelsBefore = await prisma.level.count();
 if (subjectsBefore === 0 || levelsBefore === 0) {
   const result = await seedCatalog(prisma, { force: false });
   say(`catalog was empty (${subjectsBefore} subjects, ${levelsBefore} levels) -> seeded ` +
-      `${result.subjects} subjects, ${result.levels} levels, ${result.priceCells} price cells`);
+      `${result.subjects} subjects, ${result.levels} levels`);
 } else {
   say(`catalog present (${subjectsBefore} subjects, ${levelsBefore} levels), left untouched`);
 }

@@ -66,7 +66,6 @@ export default function StudentDashboard() {
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard icon="📚" label="الدورات المسجّل بها" value={stats.data?.enrolledCourses ?? '—'} tone="indigo" />
-        <StatCard icon="💳" label="اشتراكات نشطة" value={stats.data?.activeSubscriptions?.length ?? 0} tone="purple" />
         <StatCard icon="📡" label="حصص مباشرة الآن" value={liveNow.length} tone="red" />
         <StatCard
           icon="✅"
@@ -119,43 +118,6 @@ export default function StudentDashboard() {
           )}
         </Card>
 
-        <Card className="p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-bold text-gray-900 dark:text-slate-100">اشتراكاتك</h2>
-            <Link href="/student/subscriptions" className="text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 font-medium">
-              عرض الكل
-            </Link>
-          </div>
-
-          {stats.loading ? (
-            <Spinner />
-          ) : !stats.data?.activeSubscriptions?.length ? (
-            <div className="text-center py-8 text-gray-500 dark:text-slate-400">
-              <div className="text-4xl mb-3">💳</div>
-              <p className="mb-4">ليس لديك اشتراكات نشطة</p>
-              <Link
-                href="/student/subjects"
-                className="inline-block px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium"
-              >
-                تصفح المواد
-              </Link>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {stats.data.activeSubscriptions.slice(0, 4).map((sub, i) => (
-                <div key={i} className="flex items-center justify-between p-3 rounded-xl bg-gray-50 dark:bg-slate-900/60">
-                  <div>
-                    <h3 className="font-medium text-gray-900 dark:text-slate-100 text-sm">{sub.subject.nameAr ?? sub.subject.name}</h3>
-                    <p className="text-xs text-gray-500 dark:text-slate-400">
-                      {sub.accessType === 'LIVE' ? 'بث مباشر' : sub.accessType === 'VIDEO' ? 'فيديوهات' : 'تمارين'}
-                    </p>
-                  </div>
-                  <Badge variant="green">نشط</Badge>
-                </div>
-              ))}
-            </div>
-          )}
-        </Card>
       </div>
 
       <Card className="p-6">

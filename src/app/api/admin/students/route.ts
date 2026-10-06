@@ -25,9 +25,6 @@ export async function GET() {
             createdAt: true,
           },
         },
-        subscriptions: {
-          include: { subject: { select: { nameAr: true, name: true } } },
-        },
       },
       orderBy: { createdAt: 'desc' },
     });

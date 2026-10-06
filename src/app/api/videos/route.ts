@@ -3,7 +3,6 @@ import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma/client';
 import { getSession } from '@/lib/auth/jwt';
 import { requireTeacherOrAdmin, ownsCourse } from '@/lib/auth/guards';
-import { courseAccessFilter } from '@/lib/subscriptions/access';
 
 export async function GET(request: NextRequest) {
   try {
@@ -26,16 +25,9 @@ export async function GET(request: NextRequest) {
     if (ownTeacherId) courseFilter.teacherId = ownTeacherId;
     if (!isAdmin && !ownTeacherId) courseFilter.isPublished = true;
 
-    // A student sees FREE courses plus the PAID subjects they hold an active
-    // VIDEO subscription for. Without this the list leaks every published video
-    // on the platform to any logged-in student; without the FREE arm a free
-    // course would be hidden from the very students it is free for.
-    if (session?.role === 'STUDENT') {
-      Object.assign(
-        courseFilter,
-        await courseAccessFilter(session.student?.id ?? null, 'VIDEO'),
-      );
-    }
+    // No payment filter for a student: `isPublished` on the course, set above, is the
+    // only restriction. This branch used to fold in an allow-list of PAID subjects
+    // the student had bought.
 
     if (teacherId && (isAdmin || teacherId === ownTeacherId)) {
       courseFilter.teacherId = teacherId;

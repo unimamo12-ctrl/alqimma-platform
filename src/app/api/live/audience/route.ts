@@ -3,14 +3,24 @@ import { getSession } from '@/lib/auth/jwt';
 import { prisma } from '@/lib/prisma/client';
 
 /**
- * Who can actually watch a broadcast for a given course.
+ * Who can watch a broadcast for a given course.
  *
- * A teacher broadcasting into an empty room has no way to tell "nobody came"
- * apart from "nobody is allowed to come": `/api/live` filters by an ACTIVE,
- * unexpired LIVE subscription for the course's subject, so a session in a
- * subject with no LIVE subscribers is invisible to every student and the only
- * symptom is an empty roster. This endpoint makes that visible *before* the
- * broadcast starts.
+ * This endpoint existed because eligibility was a *payment* question: a teacher
+ * broadcasting into an empty room could not tell "nobody came" from "nobody is
+ * allowed to come", because the student list was filtered down to ACTIVE LIVE
+ * subscriptions and everyone else was invisible. With no subscriptions, every
+ * active student can join, so the eligibility question is answered rather than
+ * reported.
+ *
+ * What survives is the part that was never about money: how many students are
+ * on the platform, and how many are enrolled in this course. A teacher still
+ * needs to see that before broadcasting.
+ *
+ * The `livePriceActive` flag is gone — it reported whether new subscriptions for
+ * the subject's LIVE cell could be sold, which is meaningless now. The UI that
+ * rendered it had to stop reading it in the same change, or it would have
+ * defaulted a missing field to `false` and warned about a price that no longer
+ * exists.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -36,7 +46,6 @@ export async function GET(request: NextRequest) {
       select: {
         id: true,
         title: true,
-        subjectId: true,
         teacherId: true,
         subject: { select: { id: true, name: true, nameAr: true } },
       },
@@ -58,22 +67,10 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const now = new Date();
-
-    const [eligible, enrolled, livePriceCell, totalStudents] = await Promise.all([
+    const [eligible, enrolled, totalStudents] = await Promise.all([
+      // everyone active, because everyone may now join
       prisma.student.findMany({
-        where: {
-          user: { status: 'ACTIVE' },
-          subscriptions: {
-            some: {
-              subjectId: course.subjectId,
-              accessType: 'LIVE',
-              status: 'ACTIVE',
-              startDate: { lte: now },
-              endDate: { gte: now },
-            },
-          },
-        },
+        where: { user: { status: 'ACTIVE' } },
         select: {
           id: true,
           firstName: true,
@@ -83,12 +80,6 @@ export async function GET(request: NextRequest) {
         orderBy: { firstName: 'asc' },
       }),
       prisma.enrollment.count({ where: { courseId } }),
-      prisma.subjectAccess.findUnique({
-        where: {
-          subjectId_accessType: { subjectId: course.subjectId, accessType: 'LIVE' },
-        },
-        select: { isActive: true, price: true },
-      }),
       prisma.student.count({ where: { user: { status: 'ACTIVE' } } }),
     ]);
 
@@ -98,7 +89,6 @@ export async function GET(request: NextRequest) {
         courseId: course.id,
         courseTitle: course.title,
         subject: course.subject,
-        // the same predicate /api/live enforces, so this number matches reality
         eligibleCount: eligible.length,
         eligible: eligible.map((student) => ({
           id: student.id,
@@ -107,10 +97,6 @@ export async function GET(request: NextRequest) {
         })),
         enrolledCount: enrolled,
         totalStudents,
-        // A deactivated price cell stops new subscriptions but does not
-        // invalidate the ones students already hold, so it is reported
-        // separately rather than folded into `eligible`.
-        livePriceActive: livePriceCell?.isActive ?? false,
       },
     });
   } catch {

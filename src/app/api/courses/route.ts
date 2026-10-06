@@ -37,8 +37,7 @@ export async function GET(request: NextRequest) {
           select: {
             videos: true,
             files: true,
-            // the teacher's course list states what each course actually holds,
-            // and a free/paid switch next to an empty course is a trap
+            // the teacher's course list states what each course actually holds
             exercises: true,
             liveSessions: true,
             enrollments: true,
@@ -67,7 +66,7 @@ export async function POST(request: NextRequest) {
     const { session } = guard;
 
     const body = await request.json();
-    const { subjectId, levelId, title, description, type, price, thumbnail, teacherId, isPublished } = body;
+    const { subjectId, levelId, title, description, thumbnail, teacherId, isPublished } = body;
 
     if (!subjectId || !levelId || !title) {
       return NextResponse.json(
@@ -76,19 +75,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (type !== undefined && type !== 'FREE' && type !== 'PAID') {
-      return NextResponse.json(
-        { success: false, message: 'نوع الدورة غير صالح' },
-        { status: 400 }
-      );
-    }
-
-    if (price !== undefined && (!Number.isInteger(price) || price < 0)) {
-      return NextResponse.json(
-        { success: false, message: 'السعر غير صالح' },
-        { status: 400 }
-      );
-    }
+    // `type` (FREE/PAID) and `price` were accepted here and meant nothing beyond
+    // gating access. Both are gone from the schema, and the validation that
+    // rejected a bad value went with them -- a client still sending `type: 'PAID'`
+    // now has it ignored rather than rejected, which is the intended outcome for
+    // a field that no longer has a meaning.
 
     const ownerTeacherId = session.role === 'ADMIN' ? teacherId : session.teacher?.id;
 
@@ -120,8 +111,6 @@ export async function POST(request: NextRequest) {
         levelId,
         title,
         description,
-        type: type || 'FREE',
-        price: price || 0,
         thumbnail,
         isPublished: isPublished === true,
       },

@@ -28,15 +28,14 @@ const STUDENT_AREAS: {
 }[] = [
   {
     href: '/student/subjects',
-    label: 'المواد والاشتراكات',
-    hint: 'اشترك في بث أو فيديوهات أو تمارين لكل مادة',
+    label: 'المواد الدراسية',
+    hint: 'كل المواد والدورات متاحة لك',
     icon: 'book',
   },
   { href: '/student/live', label: 'البث المباشر', hint: 'الحصص المباشرة في موادك', icon: 'broadcast' },
   { href: '/student/videos', label: 'الفيديوهات المسجلة', hint: 'دروس مسجلة متاحة لك', icon: 'video' },
   { href: '/student/exercises', label: 'التمارين', hint: 'تمارين تفاعلية مع التصحيح', icon: 'penLine' },
   { href: '/student/quizzes', label: 'الاختبارات', hint: 'اختبارات مسندة إليك ونتائجها', icon: 'layers' },
-  { href: '/student/subscriptions', label: 'اشتراكاتي', hint: 'حالة كل طلب اشتراك', icon: 'shield' },
 ];
 
 const TEACHER_AREAS: { href: string; label: string; hint: string; icon: IconName }[] = [
@@ -54,12 +53,6 @@ const ADMIN_AREAS: { href: string; label: string; hint: string; icon: IconName }
   { href: '/admin/students', label: 'الطلاب', hint: 'إدارة حسابات الطلاب', icon: 'users' },
   { href: '/admin/teachers', label: 'الأساتذة', hint: 'إدارة حسابات الأساتذة', icon: 'graduation' },
   { href: '/admin/content', label: 'المحتوى', hint: 'الدورات والبثوث', icon: 'book' },
-  {
-    href: '/admin/subscriptions',
-    label: 'الاشتراكات والدفع',
-    hint: 'تحقق الدفعات وفعّل الاشتراكات',
-    icon: 'shield',
-  },
 ];
 
 function InfoRow({ icon, label, value }: { icon: IconName; label: string; value: React.ReactNode }) {
@@ -80,7 +73,6 @@ export default function AccountPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [liveCount, setLiveCount] = useState<number | null>(null);
-  const [activeSubs, setActiveSubs] = useState<number | null>(null);
 
   // Same shape as `useApiData`: every update lands after an await.
   useEffect(() => {
@@ -103,26 +95,19 @@ export default function AccountPage() {
         // take the page down, so each is independent and the tile just omits
         // its number.
         if (json.data.user.role === 'STUDENT') {
-          const [subs, live] = await Promise.all([
-            fetch('/api/subscriptions/mine', { cache: 'no-store' })
-              .then((r) => (r.ok ? r.json() : null))
-              .catch(() => null),
-            fetch('/api/live', { cache: 'no-store' })
-              .then((r) => (r.ok ? r.json() : null))
-              .catch(() => null),
-          ]);
+          // This used to fetch /api/subscriptions/mine alongside it, to count
+          // active subscriptions. Both the endpoint and the counter went with the
+          // payment feature -- and the sweep caught the dangling 404 here, not a
+          // type error, because a fetch whose result is discarded type-checks fine.
+          const live = await fetch('/api/live', { cache: 'no-store' })
+            .then((r) => (r.ok ? r.json() : null))
+            .catch(() => null);
 
           if (cancelled) return;
-          const now = Date.now();
-          const active = (subs?.data?.subscriptions ?? []).filter(
-            (s: { status: string; endDate: string }) =>
-              s.status === 'ACTIVE' && new Date(s.endDate).getTime() > now,
-          ).length;
           const liveNow = (live?.data?.sessions ?? []).filter(
             (s: { status: string }) => s.status === 'LIVE',
           ).length;
 
-          setActiveSubs(active);
           setLiveCount(liveNow);
         }
       } catch {
@@ -160,7 +145,6 @@ export default function AccountPage() {
   const counters: Record<string, { value: number | null; unit: string }> =
     user?.role === 'STUDENT'
       ? {
-          '/student/subscriptions': { value: activeSubs, unit: 'اشتراك نشط' },
           '/student/live': { value: liveCount, unit: 'مباشر الآن' },
         }
       : {};

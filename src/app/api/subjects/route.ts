@@ -1,26 +1,24 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma/client';
-import { getSession } from '@/lib/auth/jwt';
-import { activeAccessBySubject, ACCESS_LABELS, ACCESS_TYPES } from '@/lib/subscriptions/access';
 
 export async function GET() {
   try {
-    const session = await getSession();
-
+    /*
+     * The catalog, and nothing else.
+     *
+     * This used to be a public route that nobody could subscribe through: it sent
+     * a `subscribed` flag per (subject, accessType) cell and the active price, so
+     * the browser could render "اشترك الآن" against the right cell. Both are gone
+     * with the payment feature, and so is the `access` array it read from.
+     *
+     * `getSession` went with them. The endpoint is public either way — it never
+     * returned anything role-specific — and keeping the call would have implied a
+     * per-viewer response that no longer exists.
+     */
     const subjects = await prisma.subject.findMany({
-      include: {
-        _count: { select: { courses: true } },
-        access: { where: { isActive: true }, orderBy: { accessType: 'asc' } },
-      },
+      include: { _count: { select: { courses: true } } },
       orderBy: { name: 'asc' },
     });
-
-    // A logged-in student needs to know which cells they already hold, so the
-    // browser can render "subscribed" instead of "subscribe now". Anonymous and
-    // staff get the catalog without that overlay.
-    const held = session?.role === 'STUDENT' && session.student
-      ? await activeAccessBySubject(session.student.id)
-      : new Map<string, { accessTypes: string[] }>();
 
     return NextResponse.json({
       success: true,
@@ -32,16 +30,7 @@ export async function GET() {
           icon: subject.icon,
           color: subject.color,
           courseCount: subject._count.courses,
-          access: subject.access.map((cell) => ({
-            accessType: cell.accessType,
-            label: ACCESS_LABELS[cell.accessType],
-            price: Number(cell.price),
-            durationDays: cell.durationDays,
-            isActive: cell.isActive,
-            subscribed: held.get(subject.id)?.accessTypes.includes(cell.accessType) ?? false,
-          })),
         })),
-        accessTypes: ACCESS_TYPES,
       },
     });
   } catch {

@@ -19,11 +19,6 @@ enum UserStatus {
   SUSPENDED
 }
 
-enum CourseType {
-  FREE
-  PAID
-}
-
 // Teacher-controlled intent is stored; the rest of the lifecycle is derived
 // from the time window and the attempts so it never needs a cron job.
 enum QuizStatus {
@@ -61,31 +56,6 @@ enum SessionStatus {
   CANCELLED
 }
 
-enum SubscriptionStatus {
-  PENDING
-  ACTIVE
-  REJECTED
-  EXPIRED
-  CANCELLED
-}
-
-enum PaymentStatus {
-  PENDING
-  COMPLETED
-  FAILED
-  REFUNDED
-}
-
-enum AccessType {
-  LIVE
-  VIDEO
-  EXERCISE
-}
-
-enum PaymentMethod {
-  BARIDI
-  MOB
-}
 
 model User {
   id            String        @id @default(cuid())
@@ -159,7 +129,6 @@ model Student {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  subscriptions Subscription[]
   attendances   Attendance[]
   progress      VideoProgress[]
   enrollments   Enrollment[]
@@ -200,8 +169,6 @@ model Subject {
   createdAt DateTime @default(now())
 
   courses      Course[]
-  access       SubjectAccess[]
-  subscriptions Subscription[]
 
   @@map("subjects")
 }
@@ -228,9 +195,7 @@ model Course {
   level       Level      @relation(fields: [levelId], references: [id])
   title       String
   description String?
-  type        CourseType @default(FREE)
-  price       Decimal    @default(0) @db.Decimal(10, 2)
-  thumbnail    String?
+  thumbnail   String?
   isPublished Boolean    @default(false)
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
@@ -349,90 +314,6 @@ model Attendance {
   @@map("attendance")
 }
 
-// Price and duration for one access type on one subject.
-//
-// This replaces the old SubscriptionPlan bundles. A bundle said "pay once,
-// get everything", which is the opposite of what a per-subject school platform
-// needs: a student taking only physics should not pay for Arabic, and a student
-// who only wants recorded lessons should not pay for the live room. So the
-// catalog is a matrix of (subject, accessType) and each cell is bought
-// separately.
-//
-// durationDays is per cell too, because live access is naturally sold shorter
-// than a semester of recordings.
-model SubjectAccess {
-  id           String      @id @default(cuid())
-  subjectId    String
-  subject      Subject     @relation(fields: [subjectId], references: [id], onDelete: Cascade)
-  accessType   AccessType
-  price        Decimal     @db.Decimal(10, 2)
-  durationDays Int         @default(30)
-  isActive     Boolean     @default(true)
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
-
-  @@unique([subjectId, accessType])
-  @@index([accessType])
-  @@map("subject_access")
-}
-
-// One row per (student, subject, accessType).
-//
-// The composite unique is the whole point: it is what makes the three access
-// types independent. A student with an ACTIVE LIVE row still has no VIDEO row,
-// so the video gate keeps refusing them until they buy that cell separately.
-// The old model had a single planId and one active subscription unlocked
-// everything, which is exactly the behaviour being removed.
-//
-// status starts at PENDING and only an admin moves it to ACTIVE. Until then
-// every content gate refuses, so subscribing is a request, not a key.
-model Subscription {
-  id         String             @id @default(cuid())
-  studentId  String
-  student    Student            @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  subjectId  String
-  subject    Subject            @relation(fields: [subjectId], references: [id], onDelete: Cascade)
-  accessType AccessType
-  startDate  DateTime           @default(now())
-  endDate    DateTime
-  status     SubscriptionStatus @default(PENDING)
-  createdAt  DateTime           @default(now())
-  updatedAt  DateTime           @updatedAt
-
-  payments   Payment[]
-
-  @@unique([studentId, subjectId, accessType])
-  @@index([studentId, status])
-  @@index([subjectId])
-  @@map("subscriptions")
-}
-
-// A payment attempt against one subscription.
-//
-// method is an enum rather than a free string because the admin approval
-// screen has to render the two supported methods differently: BaridiMob needs
-// a CCP account number and a transfer reference, MOB needs a phone number and
-// an operator receipt. A free-text field would leave the admin guessing what
-// they are looking at.
-//
-// status stays PENDING until an admin confirms the money actually arrived.
-// Marking it COMPLETED is what activates the subscription, so "the admin
-// verified it" and "the payment is real" are the same event.
-model Payment {
-  id             String        @id @default(cuid())
-  subscriptionId String
-  subscription   Subscription  @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
-  amount         Decimal       @db.Decimal(10, 2)
-  method         PaymentMethod
-  status         PaymentStatus @default(PENDING)
-  transactionId  String?
-  // photo of the transfer receipt, a local /uploads/image/... path
-  proofUrl       String?
-  createdAt      DateTime      @default(now())
-
-  @@index([subscriptionId])
-  @@map("payments")
-}
 
 model Notification {
   id        String   @id @default(cuid())

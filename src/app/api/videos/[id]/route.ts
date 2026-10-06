@@ -8,7 +8,6 @@ import {
   notFound,
   serverError,
 } from '@/lib/auth/guards';
-import { requireCourseAccess } from '@/lib/subscriptions/access';
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -27,7 +26,6 @@ export async function GET(_request: NextRequest, { params }: Params) {
 teacherId: true,
       subjectId: true,
       // FREE courses skip the subscription gate, so the guard below needs it.
-      type: true,
       subject: { select: { name: true } },
       level: { select: { name: true } },
           },
@@ -46,18 +44,8 @@ teacherId: true,
       return notFound('الفيديو غير موجود');
     }
 
-    // A FREE course is open to any student; a PAID one needs an active VIDEO
-    // subscription for its subject. The list endpoint hides what they cannot
-    // open, but the URL is guessable, so the check has to be here too.
-    if (session?.role === 'STUDENT') {
-      const access = await requireCourseAccess(
-        session.student?.id ?? null,
-        video.course.subjectId,
-        'VIDEO',
-        video.course.type,
-      );
-      if (!access.ok) return access.response;
-    }
+    // No payment gate: content is open to any signed-in student. `isPublished` and
+    // teacher ownership above are what still restrict this route — not money.
 
     return NextResponse.json({ success: true, data: { video } });
   } catch {

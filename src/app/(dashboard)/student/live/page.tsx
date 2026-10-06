@@ -15,7 +15,6 @@ interface LiveSessionRow {
   isRecorded?: boolean;
   recordingUrl?: string | null;
   // undefined for teachers/admins, who are never gated
-  hasAccess?: boolean;
   course?: {
     id: string;
     title: string;
@@ -92,7 +91,7 @@ export default function StudentLiveListPage() {
         <EmptyState
           icon="📡"
           title="لا توجد حصص مباشرة حالياً"
-          description="اشترك في مادة للوصول إلى بثها المباشر"
+          description="لا توجد حصص مباشرة مجدولة حالياً"
           action={
             <Link
               href="/student/subjects"
@@ -118,18 +117,6 @@ export default function StudentLiveListPage() {
               item.recordingUrl ?? item.course?.recordingUrl ?? item.course?.videos?.[0]?.url ?? null;
             const isEnded = item.status === 'ENDED' || item.status === 'CANCELLED';
 
-            /*
-             * A FREE course is joinable by anyone; a PAID one needs the LIVE
-             * subscription for its subject. The API sends `hasAccess` so the card
-             * can offer the right action instead of a join button that 403s.
-             */
-            const locked = item.hasAccess === false;
-            const subjectName =
-              item.course?.subject?.nameAr ?? item.course?.subject?.name ?? '';
-            const subscribeHref = item.course?.subjectId
-              ? `/student/subjects?subject=${encodeURIComponent(item.course.subjectId)}&access=LIVE`
-              : '/student/subjects';
-
             return (
               <Card key={item.id} hover className="p-5">
                 <div className="flex items-start justify-between gap-3 mb-3">
@@ -147,19 +134,7 @@ export default function StudentLiveListPage() {
                   {new Date(item.scheduledAt).toLocaleString('ar-DZ')}
                 </p>
 
-                {locked ? (
-                  <div className="space-y-2">
-                    <Link
-                      href={subscribeHref}
-                      className="inline-block w-full text-center py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium transition-colors"
-                    >
-                      اشترك لتنضم
-                    </Link>
-                    <p className="text-xs text-gray-500 dark:text-slate-400 text-center">
-                      بث يتطلب اشتراكًا في «البث المباشر»{subjectName ? ` — ${subjectName}` : ''}
-                    </p>
-                  </div>
-                ) : isEnded ? (
+                {isEnded ? (
                   replayUrl ? (
                     <a
                       href={replayUrl}

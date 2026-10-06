@@ -16,7 +16,7 @@ export function NoCoursesNotice({ what = 'المحتوى' }: { what?: string }) 
       <p className="font-medium">لا توجد دورات بعد</p>
       <p className="mt-1 text-amber-800 dark:text-amber-200">
         {what} يُضاف داخل دورة، فأنشئ دورة أولًا — وحدّد فيها إن كانت{' '}
-        <strong>مجانية</strong> أم <strong>تتطلب اشتراكًا</strong>.
+        منشورة.
       </p>
       <Link
         href="/teacher/courses"

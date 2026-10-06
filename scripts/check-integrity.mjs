@@ -40,14 +40,6 @@ for (const n of notifications) {
   }
 }
 
-// an ACTIVE subscription outside its date window is an access pass that should
-// not be honoured, and the gate is what decides whether it is
-const now = new Date();
-const stale = await prisma.subscription.count({
-  where: { status: 'ACTIVE', OR: [{ startDate: { gt: now } }, { endDate: { lt: now } }] },
-});
-if (stale > 0) note(`${stale} ACTIVE subscriptions outside their date window`);
-
 // a recorded session must have the url the replay link depends on
 const recordedNoUrl = await prisma.liveSession.count({
   where: { isRecorded: true, OR: [{ recordingUrl: null }, { recordingUrl: '' }] },
@@ -68,9 +60,6 @@ if (unreachableVideos > 0) note(`${unreachableVideos} published videos inside an
 
 // the foreign keys themselves: a broken one means a delete left a row behind
 const backRefs = {
-  paymentsWithoutSubscription: await prisma.$queryRaw`
-    SELECT COUNT(*)::int AS n FROM "payments" p
-    LEFT JOIN "subscriptions" s ON s.id = p."subscriptionId" WHERE s.id IS NULL`,
   videosWithoutCourse: await prisma.$queryRaw`
     SELECT COUNT(*)::int AS n FROM "videos" v
     LEFT JOIN "courses" c ON c.id = v."courseId" WHERE c.id IS NULL`,
@@ -82,14 +71,34 @@ const backRefs = {
     LEFT JOIN "quizzes" q ON q.id = a."quizId" WHERE q.id IS NULL`,
 };
 
-const publishedFree = await prisma.course.count({ where: { type: 'FREE', isPublished: true } });
+/*
+ * The payment tables must be *gone*, not merely unread.
+ *
+ * A removal that left `subscriptions` behind would pass every other check here:
+ * nothing selects it, so nothing reports an orphan, and the script would report
+ * clean while the feature it claims to have removed was still there. Asserting
+ * their absence from `information_schema` is what makes this check able to fail
+ * for the reason it exists.
+ */
+const leftovers = await prisma.$queryRaw`
+  SELECT table_name AS name FROM information_schema.tables
+  WHERE table_schema = current_schema()
+    AND table_name IN ('payments', 'subscriptions', 'subject_access')`;
+for (const row of leftovers) note(`table still exists after the payment removal: ${row.name}`);
+
+const removedColumns = await prisma.$queryRaw`
+  SELECT column_name AS name FROM information_schema.columns
+  WHERE table_schema = current_schema() AND table_name = 'courses'
+    AND column_name IN ('type', 'price')`;
+for (const row of removedColumns) note(`courses.${row.name} still exists`);
+
+const publishedCourses = await prisma.course.count({ where: { isPublished: true } });
 
 const summary = {
   subjects: await prisma.subject.count(),
   levels: await prisma.level.count(),
   courses: await prisma.course.count(),
-  subscriptions: await prisma.subscription.count(),
-  payments: await prisma.payment.count(),
+  publishedCourses,
   liveSessions: await prisma.liveSession.count(),
   videos: await prisma.video.count(),
   exercises: await prisma.exercise.count(),
@@ -99,8 +108,6 @@ const summary = {
   unreachableVideos,
   recordedNoUrl,
   endedNoStamp,
-  stale,
-  publishedFree,
 };
 
 console.log('data:', JSON.stringify(summary));

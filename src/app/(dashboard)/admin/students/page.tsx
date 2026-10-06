@@ -18,7 +18,6 @@ interface StudentRow {
     lastLoginAt: string | null;
     createdAt: string;
   };
-  subscriptions: Array<{ id: string; status: string; subject: { nameAr: string | null; name: string } }>;
 }
 
 export default function AdminStudentsPage() {
@@ -80,7 +79,6 @@ export default function AdminStudentsPage() {
                   <th className="text-right font-medium px-4 py-3">البريد</th>
                   <th className="text-right font-medium px-4 py-3">المستوى</th>
                   <th className="text-right font-medium px-4 py-3">الهاتف</th>
-                  <th className="text-right font-medium px-4 py-3">الاشتراك</th>
                   <th className="text-right font-medium px-4 py-3">الحالة</th>
                 </tr>
               </thead>
@@ -103,14 +101,6 @@ export default function AdminStudentsPage() {
                     </td>
                     <td className="px-4 py-3 text-gray-600 dark:text-slate-400" dir="ltr">
                       {s.phone ?? '-'}
-                    </td>
-                    <td className="px-4 py-3 text-gray-600 dark:text-slate-400">
-                      {s.subscriptions?.length
-                        ? s.subscriptions
-                            .filter((sub) => sub.status === 'ACTIVE')
-                            .map((sub) => sub.subject.nameAr ?? sub.subject.name)
-                            .join('، ')
-                        : 'لا يوجد'}
                     </td>
                     <td className="px-4 py-3">
                       <span

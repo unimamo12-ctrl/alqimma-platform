@@ -10,7 +10,7 @@ interface SubjectRow {
   nameAr: string | null;
   icon: string | null;
   color: string | null;
-  _count?: { courses: number; subscriptions: number };
+  _count?: { courses: number };
 }
 
 interface LevelRow {
@@ -174,7 +174,7 @@ export function CatalogTab() {
                 {subject.name}
               </span>
               <Badge variant="gray">
-                {subject._count?.courses ?? 0} دورة · {subject._count?.subscriptions ?? 0} اشتراك
+                {subject._count?.courses ?? 0} دورة
               </Badge>
               <button
                 type="button"

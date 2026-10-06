@@ -4,7 +4,6 @@ import { prisma } from '@/lib/prisma/client';
 import { getSession } from '@/lib/auth/jwt';
 import { stripAnswers, validateQuestions } from '@/lib/validation/questions';
 import { requireTeacherOrAdmin, ownsCourse } from '@/lib/auth/guards';
-import { courseAccessFilter } from '@/lib/subscriptions/access';
 
 export async function GET(request: NextRequest) {
   try {
@@ -23,14 +22,8 @@ export async function GET(request: NextRequest) {
     if (ownTeacherId) courseFilter.teacherId = ownTeacherId;
     if (!isAdmin && !ownTeacherId) courseFilter.isPublished = true;
 
-// FREE courses are open to every student; PAID ones need the EXERCISE
-    // subscription for their subject.
-    if (session?.role === 'STUDENT') {
-      Object.assign(
-        courseFilter,
-        await courseAccessFilter(session.student?.id ?? null, 'EXERCISE'),
-      );
-    }
+// No payment filter for a student: the published-course check above is the only
+    // restriction.
 
     if (teacherId && (isAdmin || teacherId === ownTeacherId)) {
       courseFilter.teacherId = teacherId;

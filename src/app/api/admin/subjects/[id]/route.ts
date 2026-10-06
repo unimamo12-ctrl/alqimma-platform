@@ -30,7 +30,7 @@ export async function DELETE(
       select: {
         id: true,
         name: true,
-        _count: { select: { courses: true, subscriptions: true } },
+        _count: { select: { courses: true } },
       },
     });
     if (!subject) {
@@ -40,21 +40,18 @@ export async function DELETE(
       );
     }
 
-    if (subject._count.courses > 0 || subject._count.subscriptions > 0) {
+    // Courses are a teacher's work, so the guard stays. The subscription count
+    // that used to sit beside it went with the payment feature.
+    if (subject._count.courses > 0) {
       return NextResponse.json(
         {
           success: false,
-          message:
-            subject._count.subscriptions > 0
-              ? `لا يمكن حذف مادة فيها ${subject._count.subscriptions} اشتراكًا`
-              : `لا يمكن حذف مادة ترتبط بها ${subject._count.courses} دورة`,
+          message: `لا يمكن حذف مادة ترتبط بها ${subject._count.courses} دورة`,
         },
         { status: 409 },
       );
     }
 
-    // The price cells have no independent meaning without their subject.
-    await prisma.subjectAccess.deleteMany({ where: { subjectId: id } });
     await prisma.subject.delete({ where: { id } });
 
     return NextResponse.json({ success: true, data: { id } });

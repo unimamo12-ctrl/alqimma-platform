@@ -64,21 +64,20 @@ async function api(cookie, path, init = {}) {
 
 const PAGES = [
   '/', '/login', '/register', '/forgot-password', '/reset-password', '/teachers',
-  '/dashboard', '/student', '/student/notifications', '/student/subscriptions',
+  '/dashboard', '/student', '/student/notifications', '/student/subjects',
   '/teacher', '/teacher/videos', '/teacher/videos/video-1', '/teacher/files',
   '/teacher/exercises', '/teacher/live', '/teacher/live/live-algebra-review',
   '/teacher/attendance', '/teacher/students', '/teacher/profile',
   '/teacher/settings',
   '/admin', '/admin/students', '/admin/teachers', '/admin/content',
-  '/admin/subscriptions',
 ];
 
 const APIS = [
   '/api/teachers', '/api/subjects', '/api/levels', '/api/videos', '/api/files',
   '/api/exercises', '/api/courses', '/api/live', '/api/notifications',
-  '/api/attendance', '/api/subscriptions', '/api/admin/stats',
+  '/api/attendance', '/api/admin/stats',
   '/api/admin/students', '/api/admin/teachers', '/api/teacher/students',
-  '/api/teacher/stats', '/api/payments',
+  '/api/teacher/stats',
   '/api/videos/video-1', '/api/files/file-exercises-3am',
   '/api/exercises/exercise-algebra-1',
 ];
@@ -108,16 +107,12 @@ async function main() {
   console.log('=== SEEDED DATA (student) ===');
   const courses = await api(sessions.student, '/api/courses');
   console.log('  courses returned      ', courses.status, '| count =', courses.body?.data?.courses?.length ?? 'n/a');
-  const subs = await api(sessions.student, '/api/subscriptions');
-  console.log('  student plans         ', subs.body?.data?.plans?.length ?? 0, '| subs =', subs.body?.data?.subscriptions?.length ?? 0);
   const notifs = await api(sessions.student, '/api/notifications');
   console.log('  student notifications ', notifs.body?.data?.notifications?.length ?? 0, '| unread =', notifs.body?.data?.unreadCount ?? 'n/a');
   const tStudents = await api(sessions.teacher, '/api/teacher/students');
   console.log('  teacher enrolled      ', tStudents.body?.data?.students?.length ?? 'n/a');
   const tStats = await api(sessions.teacher, '/api/teacher/stats');
   console.log('  teacher stats         ', JSON.stringify(tStats.body?.data?.stats ?? {}));
-  const aSubs = await api(sessions.admin, '/api/subscriptions');
-  console.log('  admin plans+subs      ', aSubs.body?.data?.plans?.length ?? 0, '/', aSubs.body?.data?.subscriptions?.length ?? 0);
 
   console.log('=== CONTENT OWNERSHIP ===');
   const questionKeys = async (cookie) => {
@@ -229,9 +224,6 @@ async function main() {
   console.log('  student POST /api/videos      ', (await write('/api/videos', { courseId: 'x', title: 't', url: 'u' })).status, '(expect 401/403)');
   console.log('  student POST /api/exercises   ', (await write('/api/exercises', { courseId: 'x', title: 't' })).status, '(expect 401/403)');
   console.log('  student POST /api/notifications', (await write('/api/notifications', { title: 'a', message: 'b', type: 'INFO' })).status, '(expect 403)');
-  console.log('  student POST /api/subscriptions', (await write('/api/subscriptions', { planId: 'nope', paymentMethod: 'CASH' })).status, '(expect 400/404)');
-  console.log('  student POST /api/admin/plans ', (await write('/api/admin/plans', { name: 'x', price: 1, duration: 30 })).status, '(expect 403)');
-  console.log('  student POST /api/payments    ', (await write('/api/payments', { paymentId: 'x', status: 'COMPLETED' })).status, '(expect 401/403)');
   console.log('  student DELETE /api/videos/video-1', (await write('/api/videos/video-1', {}, 'DELETE')).status, '(expect 401/403)');
   console.log('  student PUT notif foreign id  ', (await write('/api/notifications', { notificationId: 'nope', isRead: true }, 'PUT')).status, '(expect 404)');
   console.log('  anon POST /api/auth/register bad', (await api('', '/api/auth/register', { method: 'POST', body: JSON.stringify({}) })).status, '(expect 400)');

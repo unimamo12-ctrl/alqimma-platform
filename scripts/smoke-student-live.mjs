@@ -26,7 +26,7 @@ const studentCookie = await login('student@alqimma.com');
 const teacherCookie = await login('teacher@alqimma.com');
 
 log('--- pages reachable ---');
-for (const path of ['/student', '/student/live', '/student/subscriptions', '/student/notifications']) {
+for (const path of ['/student', '/student/live', '/student/subjects', '/student/notifications']) {
   const res = await fetch(`${BASE}${path}`, { headers: { cookie: studentCookie }, redirect: 'manual' });
   check(`GET ${path}`, res.status === 200, `status=${res.status}`);
 }

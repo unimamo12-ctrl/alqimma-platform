@@ -70,12 +70,13 @@ try {
 
   const subjects = await prisma.subject.count();
   const levels = await prisma.level.count();
-  const cells = await prisma.subjectAccess.count();
   const admins = await prisma.user.findMany({ where: { role: 'ADMIN' } });
 
   check('the catalog exists', subjects > 0 && levels > 0, `${subjects} subjects, ${levels} levels`);
-  check('every subject got its three price cells', cells === subjects * 3, `${cells} cells`);
-  check('price cells are sellable', (await prisma.subjectAccess.count({ where: { isActive: true } })) === cells);
+  // it used to assert three sellable price cells per subject. Nothing is sold now,
+  // so the equivalent "not configured-but-unusable" check is that every subject a
+  // deploy creates is one a student can actually open content in.
+  check('every seeded subject has a name', (await prisma.subject.count({ where: { OR: [{ nameAr: null }, { nameAr: '' }] } })) === 0);
   check('exactly one admin exists', admins.length === 1, `${admins.length}`);
   check('it is the requested address', admins[0]?.email === 'first@probe.test', admins[0]?.email);
   // the generated password must not have landed on the documented test default,
@@ -85,9 +86,11 @@ try {
   check('no seeded test users were created', (await prisma.user.count({ where: { email: 'student@alqimma.com' } })) === 0);
 
   console.log('\n--- redeploy onto the same database ---');
-  // an admin must survive a redeploy, and an admin decision must too
-  const victim = await prisma.subjectAccess.findFirst();
-  await prisma.subjectAccess.update({ where: { id: victim.id }, data: { isActive: false } });
+  // An admin must survive a redeploy, and so must an admin's own edit. This used
+  // to disable a price cell and require it to stay disabled; with no cells, the
+  // equivalent is renaming a subject, which `force: false` is there to protect.
+  const victim = await prisma.subject.findFirstOrThrow();
+  await prisma.subject.update({ where: { id: victim.id }, data: { nameAr: 'اسم عدّله المدير' } });
 
   run('./deploy-bootstrap.mjs', { DATABASE_URL: baseUrl, ADMIN_EMAIL: 'second@probe.test' });
 
@@ -95,9 +98,16 @@ try {
   check('the existing admin address is untouched', (await prisma.user.findUnique({ where: { email: 'first@probe.test' } })) !== null);
   check('ADMIN_EMAIL does not reset an existing admin',
     (await prisma.user.findUnique({ where: { email: 'second@probe.test' } })) === null);
-  check('a deliberately disabled price cell stays disabled',
-    (await prisma.subjectAccess.findUnique({ where: { id: victim.id } })).isActive === false);
+  check('a subject renamed by an admin is not reverted by the deploy',
+    (await prisma.subject.findUnique({ where: { id: victim.id } })).nameAr === 'اسم عدّله المدير');
   check('the catalog was not duplicated', (await prisma.subject.count()) === subjects);
+  // the deploy must not resurrect the payment tables, and `seedCatalog` is the code
+  // that used to write them -- so this is what catches a partial revert
+  const resurrected = await prisma.$queryRaw`
+    SELECT table_name AS name FROM information_schema.tables
+    WHERE table_schema = current_schema()
+      AND table_name IN ('payments', 'subscriptions', 'subject_access')`;
+  check('the deploy recreated no payment tables', resurrected.length === 0, JSON.stringify(resurrected));
 
   /*
    * The lockout path. Losing the generated password has to be recoverable without a

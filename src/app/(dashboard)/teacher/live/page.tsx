@@ -217,25 +217,14 @@ export default function TeacherLiveListPage() {
                 ) : (
                   <>
                     <p className="font-medium">
-                      لا يوجد طالب مشترك في «البث المباشر» لهذه المادة — لن يراه أحد
+                      لا يوجد أي طالب مسجّل على المنصة — لن يراه أحد
                     </p>
-                    <p className="text-xs mt-1 opacity-90">
-                      اشتراك «البث المباشر» يُشترى منفصلًا عن الفيديو والتمارين، ولا
-                      يكفي التسجيل في الدورة.
-                      {audience.data.totalStudents > 0 && (
-                        <>
-                          {' '}
-                          (إجمالي الطلاب المنخرطين: {audience.data.totalStudents})
-                        </>
-                      )}
-                    </p>
+                    {audience.data.totalStudents > 0 && (
+                      <p className="text-xs mt-1 opacity-90">
+                        (إجمالي الطلاب المنخرطين: {audience.data.totalStudents})
+                      </p>
+                    )}
                   </>
-                )}
-                {!audience.data.livePriceActive && (
-                  <p className="text-xs mt-2 font-medium">
-                    تنبيه: سعر «البث المباشر» لهذه المادة معطّل، فاشتراك جديد
-                    غير ممكن حتى تعيد تفعيله من لوحة الإدارة.
-                  </p>
                 )}
               </div>
             )}

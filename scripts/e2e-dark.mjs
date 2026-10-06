@@ -158,8 +158,8 @@ async function lightSurfaces(page) {
 
 const roles = [
   [null, ['/', '/teachers', '/live', '/login', '/register']],
-  ['admin@alqimma.com', ['/admin', '/admin/subscriptions', '/admin/students', '/admin/teachers', '/admin/content', '/account']],
-  ['student@alqimma.com', ['/student', '/student/subjects', '/student/live', '/student/videos', '/student/exercises', '/student/subscriptions', '/student/quizzes', '/student/notifications']],
+  ['admin@alqimma.com', ['/admin', '/admin/students', '/admin/teachers', '/admin/content', '/account']],
+  ['student@alqimma.com', ['/student', '/student/subjects', '/student/live', '/student/videos', '/student/exercises', '/student/quizzes', '/student/notifications']],
   ['teacher@alqimma.com', ['/teacher', '/teacher/courses', '/teacher/videos', '/teacher/exercises', '/teacher/files', '/teacher/live', '/teacher/quizzes', '/teacher/students']],
 ];
 

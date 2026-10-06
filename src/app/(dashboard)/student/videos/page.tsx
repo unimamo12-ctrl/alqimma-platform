@@ -66,7 +66,7 @@ export default function StudentVideosPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900 dark:text-slate-100">الفيديوهات المسجلة</h1>
-        <p className="text-gray-500 dark:text-slate-400 mt-1">دروس مسجلة في مواد اشتركت فيها</p>
+        <p className="text-gray-500 dark:text-slate-400 mt-1">دروس مسجلة متاحة للجميع</p>
       </div>
 
       {error && (
@@ -79,7 +79,7 @@ export default function StudentVideosPage() {
         <EmptyState
           icon="🎬"
           title="لا توجد فيديوهات متاحة"
-          description="اشترك في مادة للوصول إلى فيديوهاتها المسجلة"
+          description="لا توجد فيديوهات مسجلة بعد"
           action={
             <Link
               href="/student/subjects"

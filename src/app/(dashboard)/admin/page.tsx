@@ -11,11 +11,8 @@ interface Stats {
   totalVideos: number;
   totalFiles: number;
   totalLiveSessions: number;
-  totalSubscriptions: number;
-  totalPayments: number;
   activeStudents: number;
   activeTeachers: number;
-  totalRevenue: number;
 }
 
 export default function AdminDashboard() {
@@ -97,17 +94,6 @@ export default function AdminDashboard() {
                 <div className="text-gray-600 dark:text-slate-400">الفيديوهات</div>
               </div>
 
-              <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 border border-gray-100 dark:border-slate-800 shadow-sm">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="w-12 h-12 bg-orange-100 dark:bg-orange-500/15 rounded-xl flex items-center justify-center text-2xl">
-                    💰
-                  </div>
-                </div>
-                <div className="text-3xl font-bold text-gray-900 dark:text-slate-100 mb-1">
-                  {stats.totalRevenue.toLocaleString()} دج
-                </div>
-                <div className="text-gray-600 dark:text-slate-400">الإيرادات</div>
-              </div>
             </div>
           )}
 
@@ -154,14 +140,6 @@ export default function AdminDashboard() {
                   <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-slate-900/60 rounded-xl">
                     <span className="text-gray-600 dark:text-slate-400">البث المباشر</span>
                     <span className="font-semibold text-gray-900 dark:text-slate-100">{stats.totalLiveSessions}</span>
-                  </div>
-                  <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-slate-900/60 rounded-xl">
-                    <span className="text-gray-600 dark:text-slate-400">الاشتراكات</span>
-                    <span className="font-semibold text-gray-900 dark:text-slate-100">{stats.totalSubscriptions}</span>
-                  </div>
-                  <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-slate-900/60 rounded-xl">
-                    <span className="text-gray-600 dark:text-slate-400">المدفوعات</span>
-                    <span className="font-semibold text-gray-900 dark:text-slate-100">{stats.totalPayments}</span>
                   </div>
                 </div>
               ) : (

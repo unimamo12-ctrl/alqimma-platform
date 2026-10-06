@@ -71,21 +71,12 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Price cells are created at the same time on purpose. A subject with no
-    // SubjectAccess rows has nothing a student can buy, so it looks configured
-    // but is unusable — the exact dead end this endpoint exists to remove.
-    const prices = await prisma.subjectAccess.createMany({
-      data: [
-        { subjectId: subject.id, accessType: 'LIVE', price: 1500, durationDays: 30 },
-        { subjectId: subject.id, accessType: 'VIDEO', price: 2000, durationDays: 90 },
-        { subjectId: subject.id, accessType: 'EXERCISE', price: 1000, durationDays: 90 },
-      ],
-    });
+    // Creating the subject is the whole job now. It used to also create three
+    // price cells here, because a subject with no prices had nothing a student
+    // could buy and so looked configured while being unusable. With no payment
+    // there is nothing to sell, and the extra rows would only be dead config.
 
-    return NextResponse.json(
-      { success: true, data: { subject, priceCells: prices.count } },
-      { status: 201 },
-    );
+    return NextResponse.json({ success: true, data: { subject } }, { status: 201 });
   } catch {
     return serverError();
   }

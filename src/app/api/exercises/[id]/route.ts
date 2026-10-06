@@ -8,7 +8,6 @@ import {
   notFound,
   serverError,
 } from '@/lib/auth/guards';
-import { requireCourseAccess } from '@/lib/subscriptions/access';
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -27,7 +26,6 @@ export async function GET(_request: NextRequest, { params }: Params) {
 teacherId: true,
       subjectId: true,
       // FREE courses skip the subscription gate, so the guard below needs it.
-      type: true,
       subject: { select: { name: true } },
       level: { select: { name: true } },
           },
@@ -46,18 +44,8 @@ teacherId: true,
       return notFound('التمرين غير موجود');
     }
 
-    // A FREE course is open to any student; a PAID one needs an active EXERCISE
-    // subscription for its subject. This is also the gate that keeps the answer
-    // key away from a student who has only bought live access.
-    if (session?.role === 'STUDENT') {
-      const access = await requireCourseAccess(
-        session.student?.id ?? null,
-        exercise.course.subjectId,
-        'EXERCISE',
-        exercise.course.type,
-      );
-      if (!access.ok) return access.response;
-    }
+    // No payment gate: exercises are open to any signed-in student. `stripAnswers`
+    // below is what still protects the answer key from a non-owner.
 
     return NextResponse.json({
       success: true,

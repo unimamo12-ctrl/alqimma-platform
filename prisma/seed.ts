@@ -1,4 +1,4 @@
-import { Prisma, PrismaClient } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
@@ -11,12 +11,6 @@ const SUBJECTS = [
   { name: 'ARABIC', nameAr: 'اللغة العربية', icon: '📖', color: '#F59E0B' },
   { name: 'FRENCH', nameAr: 'اللغة الفرنسية', icon: '🇫🇷', color: '#EC4899' },
 ];
-
-const ACCESS_PRICES: Record<string, { price: number; durationDays: number }> = {
-  LIVE: { price: 1500, durationDays: 30 },
-  VIDEO: { price: 2000, durationDays: 90 },
-  EXERCISE: { price: 1000, durationDays: 90 },
-};
 
 async function main() {
   const hashedPassword = await bcrypt.hash('password123', 12);
@@ -97,29 +91,6 @@ async function main() {
     });
   }
 
-  const accessRows: Array<{ subjectId: string; accessType: string; price: number; durationDays: number }> = [];
-  for (const subject of SUBJECTS) {
-    const created = await prisma.subject.findUniqueOrThrow({ where: { name: subject.name } });
-    for (const [accessType, cfg] of Object.entries(ACCESS_PRICES)) {
-      const cell = await prisma.subjectAccess.upsert({
-        where: {
-          subjectId_accessType: { subjectId: created.id, accessType: accessType as never },
-        },
-        // Force the cell back on. Price and duration are left alone because a
-        // wrong price is visible in the admin table, but a cell left inactive is
-        // invisible *and* silently blocks every new subscription for it.
-        update: { isActive: true },
-        create: {
-          subjectId: created.id,
-          accessType: accessType as never,
-          price: new Prisma.Decimal(cfg.price),
-          durationDays: cfg.durationDays,
-        },
-      });
-      accessRows.push({ subjectId: cell.id, accessType, price: cfg.price, durationDays: cfg.durationDays });
-    }
-  }
-
   const math = await prisma.subject.findUniqueOrThrow({ where: { name: 'MATH' } });
   const level3 = await prisma.level.findUniqueOrThrow({ where: { name: '3AM' } });
 
@@ -134,7 +105,7 @@ async function main() {
     // by nothing, so a FREE default was harmless; now FREE really does open a
     // course to every student with no subscription, and leaving the demo course
     // at the schema default silently un-gated the whole platform.
-    update: { isPublished: true, type: 'PAID' },
+    update: { isPublished: true },
     create: {
       id: 'course-algebra-3am',
       teacherId: teacher.id,
@@ -142,8 +113,6 @@ async function main() {
       levelId: level3.id,
       title: 'جبر السنة الثالثة متوسط',
       description: 'شرح مفصّل لمعادلات الدرجة الأولى والثانية مع تمارين محلولة',
-      type: 'FREE',
-      price: new Prisma.Decimal(0),
       isPublished: true,
     },
   });
@@ -264,42 +233,6 @@ async function main() {
     create: { studentId: student.id, courseId: course.id },
   });
 
-  const mathSubject = await prisma.subject.findUniqueOrThrow({ where: { name: 'MATH' } });
-
-  const videoAccess = await prisma.subjectAccess.findUniqueOrThrow({
-    where: { subjectId_accessType: { subjectId: mathSubject.id, accessType: 'VIDEO' } },
-  });
-
-  const subscription = await prisma.subscription.findFirst({
-    where: { studentId: student.id, subjectId: mathSubject.id, accessType: 'VIDEO' },
-  });
-
-  const activeSubscription =
-    subscription ??
-    (await prisma.subscription.create({
-      data: {
-        studentId: student.id,
-        subjectId: mathSubject.id,
-        accessType: 'VIDEO',
-        startDate: now,
-        endDate: new Date(now.getTime() + videoAccess.durationDays * 24 * 60 * 60 * 1000),
-        status: 'ACTIVE',
-      },
-    }));
-
-  await prisma.payment.upsert({
-    where: { id: 'payment-seed-1' },
-    update: {},
-    create: {
-      id: 'payment-seed-1',
-      subscriptionId: activeSubscription.id,
-      amount: new Prisma.Decimal(Number(videoAccess.price)),
-      method: 'BARIDI',
-      status: 'COMPLETED',
-      transactionId: 'SEED-TXN-0001',
-    },
-  });
-
   const notifications = [
     {
       id: 'notif-seed-1',
@@ -330,8 +263,8 @@ async function main() {
   console.log('  Teacher: teacher@alqimma.com / password123');
   console.log('  Student: student@alqimma.com / password123');
   console.log(`  Course:  ${course.title} (${videos.length} فيديوهات، ملف واحد، تمرين واحد)`);
-  console.log(`  Access:  ${accessRows.length} خلية سعر | Levels: ${LEVELS.length} | Subjects: ${SUBJECTS.length}`);
-  console.log(`  Enrolled student ${student.firstName} ${student.lastName} in course + active subscription`);
+  console.log(`  Levels: ${LEVELS.length} | Subjects: ${SUBJECTS.length}`);
+  console.log(`  Enrolled student ${student.firstName} ${student.lastName} in course`);
   console.log(`  Admin id: ${admin.id}`);
 }
 

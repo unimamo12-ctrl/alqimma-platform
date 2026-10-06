@@ -8,7 +8,6 @@ import { Card, Button, Badge, EmptyState } from '../../_components/ui';
 interface CourseRow {
   id: string;
   title: string;
-  type: 'FREE' | 'PAID';
   isPublished: boolean;
   subjectId: string;
   subject?: { id: string; name: string; nameAr: string | null };
@@ -27,18 +26,17 @@ interface CreateBody {
   subjectId: string;
   levelId: string;
   description?: string;
-  type: 'FREE' | 'PAID';
 }
 
 /**
- * Where a teacher decides whether what they add is free or paid.
+ * Where a teacher creates a course.
  *
- * The choice is per course, and it is the only thing standing between a student
- * and the content: `FREE` opens to any signed-in student with no subscription and
- * no payment, `PAID` needs the subscription cell for the course's subject and
- * goes through payment plus admin approval. Free and paid are mixed freely
- * inside one subject, so this list has to say plainly which is which — a course
- * that silently became paid would lock out every student already using it.
+ * This page used to hold the free/paid decision, and it was the most consequential
+ * control on the platform: `PAID` needed a matching subscription cell, so a course
+ * silently flipped to paid locked out every student already using it. Neither the
+ * column nor the toggle exists now — every published course is open to every
+ * signed-in student. What is left here is publication, which is the teacher's own
+ * decision and still matters.
  */
 export default function TeacherCoursesPage() {
   const { data, error, loading, reload } = useApiData<{ courses: CourseRow[] }>('/api/courses');
@@ -55,8 +53,6 @@ export default function TeacherCoursesPage() {
   const [description, setDescription] = useState('');
   const [subjectId, setSubjectId] = useState('');
   const [levelId, setLevelId] = useState('');
-  const [free, setFree] = useState(true);
-  const [busyId, setBusyId] = useState('');
 
   const courses = data?.courses ?? [];
   const subjectList = subjects.data?.subjects ?? [];
@@ -96,7 +92,6 @@ export default function TeacherCoursesPage() {
       subjectId: effectiveSubjectId,
       levelId: effectiveLevelId,
       description: description.trim() || undefined,
-      type: free ? 'FREE' : 'PAID',
     });
 
     if (result !== null) {
@@ -105,21 +100,6 @@ export default function TeacherCoursesPage() {
       setShowForm(false);
       reload();
     }
-  }
-
-  /** Switch a course between free and paid. */
-  async function toggleType(course: CourseRow) {
-    setBusyId(course.id);
-    const next = course.type === 'FREE' ? 'PAID' : 'FREE';
-
-    await fetch(`/api/courses/${course.id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type: next }),
-    });
-
-    setBusyId('');
-    reload();
   }
 
   return (
@@ -144,9 +124,7 @@ export default function TeacherCoursesPage() {
 
       <main className="max-w-6xl mx-auto px-4 py-8 space-y-6">
         <p className="text-sm text-gray-600 dark:text-slate-400">
-              حدّد لكل دورة إن كانت <strong className="text-gray-900 dark:text-slate-100">مجانية</strong> يدخلها أي طالب
-              مباشرة، أم <strong className="text-gray-900 dark:text-slate-100">تتطلب اشتراكًا</strong> في المادة، وعندها
-              يدفع الطالب ثم تراجع الإدارة الطلب قبل أن ينضم.
+              كل الدورات متاحة لكل طالب مسجّل. انشرها لتظهر في المواد، وتذكّر أنك وحدك من يقرّر النشر.
             </p>
 
         {showForm && catalogLoaded && (
@@ -234,32 +212,6 @@ export default function TeacherCoursesPage() {
                 </label>
               </div>
 
-              <div>
-                <span className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">طريقة الوصول</span>
-                <div className="grid sm:grid-cols-2 gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setFree(true)}
-                    className={`p-3 rounded-xl border-2 text-right transition-colors${
-                      free ? 'border-emerald-600 bg-emerald-50' : 'border-gray-200 dark:border-slate-700 hover:border-gray-300 dark:hover:border-slate-600'
-                    }`}
-                  >
-                    <p className="font-medium text-gray-900 dark:text-slate-100 text-sm">مجاني</p>
-                    <p className="text-xs text-gray-500 dark:text-slate-400">يدخله أي طالب مباشرة — بلا اشتراك ولا دفع</p>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setFree(false)}
-                    className={`p-3 rounded-xl border-2 text-right transition-colors${
-                      !free ? 'border-indigo-600 bg-indigo-50 dark:bg-indigo-500/10' : 'border-gray-200 dark:border-slate-700 hover:border-gray-300 dark:hover:border-slate-600'
-                    }`}
-                  >
-                    <p className="font-medium text-gray-900 dark:text-slate-100 text-sm">يتطلب اشتراكًا</p>
-                    <p className="text-xs text-gray-500 dark:text-slate-400">يدفع الطالب ثم تراجع الإدارة الطلب قبل الدخول</p>
-                  </button>
-                </div>
-              </div>
-
               {submitError && (
                 <p className="text-sm text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30 rounded-lg p-3">
                   {submitError}
@@ -297,7 +249,7 @@ export default function TeacherCoursesPage() {
           <EmptyState
             icon="📘"
             title="لا توجد دورات بعد"
-            description="أنشئ أول دورة وحدّد إن كانت مجانية أم تتطلب اشتراكًا."
+            description="أنشئ أول دورة ثم انشرها ليظهر محتواها للطلاب."
           />
         )}
 
@@ -307,8 +259,8 @@ export default function TeacherCoursesPage() {
               <Card key={course.id} className="p-5">
                 <div className="flex items-start justify-between gap-3 mb-2">
                   <h2 className="font-semibold text-gray-900 dark:text-slate-100">{course.title}</h2>
-                  <Badge variant={course.type === 'FREE' ? 'green' : 'indigo'}>
-                    {course.type === 'FREE' ? 'مجاني' : 'يتطلب اشتراكًا'}
+                  <Badge variant={course.isPublished ? 'green' : 'gray'}>
+                    {course.isPublished ? 'منشورة' : 'غير منشورة'}
                   </Badge>
                 </div>
 
@@ -321,22 +273,9 @@ export default function TeacherCoursesPage() {
                   {course._count
                     ? `${course._count.videos} فيديو · ${course._count.exercises} تمرين · ${course._count.liveSessions} بث · ${course._count.enrollments} طالب`
                     : ''}
-                  {course.isPublished ? '' : ' · غير منشورة'}
                 </p>
 
                 <div className="flex gap-2">
-                  <button
-                    type="button"
-                    disabled={busyId === course.id}
-                    onClick={() => void toggleType(course)}
-                    className="flex-1 py-2 rounded-lg border border-gray-300 dark:border-slate-600 text-sm font-medium text-gray-700 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-800/70 dark:hover:bg-slate-900/60 disabled:opacity-50"
-                  >
-                    {busyId === course.id
-                      ? '...'
-                      : course.type === 'FREE'
-                        ? 'اجعلها تتطلب اشتراكًا'
-                        : 'اجعلها مجانية'}
-                  </button>
                   <Link
                     href={`/teacher/videos?courseId=${course.id}`}
                     className="px-4 py-2 rounded-lg bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 dark:dark:hover:bg-slate-800 text-sm text-gray-700 dark:text-slate-300"

@@ -63,7 +63,7 @@ export default function StudentExercisesPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900 dark:text-slate-100">التمارين</h1>
-        <p className="text-gray-500 dark:text-slate-400 mt-1">تمارين تفاعلية في مواد اشتركت فيها</p>
+        <p className="text-gray-500 dark:text-slate-400 mt-1">تمارين تفاعلية متاحة للجميع</p>
       </div>
 
       {error && (
@@ -76,7 +76,7 @@ export default function StudentExercisesPage() {
         <EmptyState
           icon="✏️"
           title="لا توجد تمارين متاحة"
-          description="اشترك في مادة للوصول إلى تمارينها"
+          description="لا توجد تمارين بعد"
           action={
             <Link
               href="/student/subjects"
