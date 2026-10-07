@@ -18,10 +18,11 @@ socket/websocket smoke tests and the browser E2E hit a live server.
 - `npm run check:quality` — unit checks on the bitrate/frame-rate table
 - `npm run check:ratelimit` — unit checks on how a client address is derived
 - `npm run check:integrity` — asserts no row outlives or contradicts what it points at
+- `npm run e2e:recovery` — asserts a forgotten password is actually recoverable end to end
 - `npm run bootstrap:deploy` — apply migrations, repair the catalog, create a first admin if there is none
 - `npm run e2e:bootstrap-deploy` — proves the above against a throwaway schema; needs a writable Postgres, so it is **not** in `verify`
 - `npm run build` — runs `bootstrap:deploy` first; stop the dev server before, it rewrites `.next`
-- `npm run verify` — typecheck + lint + check:quality + check:ratelimit + check:integrity + smoke + smoke:live + smoke:webrtc + e2e:live + e2e:recording + e2e:quiz + e2e:auth + e2e:bootstrap + e2e:nocourses + e2e:dark + e2e:dark-hover + e2e:sweep + cleanup:sessions
+- `npm run verify` — typecheck + lint + check:quality + check:ratelimit + check:integrity + smoke + smoke:live + smoke:webrtc + e2e:live + e2e:recording + e2e:quiz + e2e:auth + e2e:recovery + e2e:bootstrap + e2e:nocourses + e2e:dark + e2e:dark-hover + e2e:sweep + cleanup:sessions
 
 Test accounts all use password `password123`: `admin@alqimma.com`,
 `teacher@alqimma.com`, `student@alqimma.com`.
@@ -194,6 +195,45 @@ Two bugs here were user-visible and neither threw a stack trace, so
 Registration is student/teacher only and cannot create an admin by design;
 `scripts/create-admin.mjs` exists because an operator still needs one, and a
 deployment that never ran `npm run seed` otherwise has no way in at all.
+
+## Recovering a password
+
+This flow was a silent dead end, and the bug was mine. Closing a real
+account-takeover hole left no delivery channel behind, so `forgot-password`
+created a valid 30-minute token, answered **200** with "سيصلك رابط", and handed it
+to nobody. Nothing threw and no test failed — the endpoint did exactly what it was
+written to do, which was nothing a user could see. `npm run e2e:recovery` exists
+because of it, and it asserts the **outcome**: the old password stops working and
+the new one works. A check asserting only "forgot-password returns 200" would have
+passed the broken version, because the broken version returned 200 too.
+
+- **Two decisions, not one flag.** Where the link *goes* and whether the token is
+  *echoed in the response* used to be the same flag, so closing the leak silently
+  removed delivery. Delivery is now unconditional: a webhook when
+  `PASSWORD_RESET_WEBHOOK_URL` is set, otherwise the **server log**. That is not
+  the same exposure as the response — the log is readable only by whoever already
+  reads the deploy output (the same person who reads the generated admin password),
+  while the response goes to whoever POSTed. Echoing the token stays strictly
+  opt-in via `ALLOW_INSECURE_DEV_RESET`.
+- **A log line is a delivery channel, not a consolation prize.** Without a mail
+  service the operator reads the link out of the deploy log, so the button works
+  instead of silently doing nothing. A public deployment should set
+  `PASSWORD_RESET_WEBHOOK_URL`.
+- **The rate-limit budget belongs to the mailbox, not the building.** It used to be
+  per-IP only, at 3 per 15 minutes, which reads as generous and is not: every
+  student on a school network arrives from one public address, so the fourth
+  student to forget a password was refused because of the other three. The people
+  it protects and the people it locks out are not the same people. There is now a
+  tight per-account limit (3) and a high per-IP one (60).
+- **The per-account check runs *after* the lookup**, so it cannot become an oracle:
+  an unknown address gets the same generic answer and is never counted, so
+  hammering a made-up address neither reveals which addresses are registered nor
+  locks a real one out. `e2e:recovery` asserts that, including that one account
+  exhausting its budget leaves unrelated addresses unaffected.
+- **The test shares a per-IP budget with everything else on the machine**, so a
+  second run inside the window gets a 429. It accepts either branch for the request
+  step and prints which one ran, rather than failing for a reason that is not its
+  own; the outcome assertions below it are unconditional.
 
 ## Two defaults that failed open
 

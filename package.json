@@ -20,7 +20,7 @@
         "e2e:recording": "node scripts/e2e-recording.mjs",
         "e2e:quiz": "node scripts/e2e-quiz.mjs",
         "cleanup:sessions": "node scripts/cleanup-test-sessions.mjs",
-        "verify": "npm run typecheck && npm run lint && npm run check:quality && npm run check:ratelimit && npm run check:integrity && npm run smoke && npm run smoke:live && npm run smoke:webrtc && npm run e2e:live && npm run e2e:recording && npm run e2e:quiz && npm run e2e:auth && npm run e2e:nocourses && npm run e2e:dark && npm run e2e:dark-hover && npm run e2e:bootstrap && npm run e2e:sweep && npm run cleanup:sessions",
+        "verify": "npm run typecheck && npm run lint && npm run check:quality && npm run check:ratelimit && npm run check:integrity && npm run smoke && npm run smoke:live && npm run smoke:webrtc && npm run e2e:live && npm run e2e:recording && npm run e2e:quiz && npm run e2e:auth && npm run e2e:recovery && npm run e2e:nocourses && npm run e2e:dark && npm run e2e:dark-hover && npm run e2e:bootstrap && npm run e2e:sweep && npm run cleanup:sessions",
         "seed": "tsx prisma/seed.ts",
         "bootstrap:deploy": "node scripts/deploy-bootstrap.mjs",
         "e2e:bootstrap-deploy": "node scripts/e2e-deploy-bootstrap.mjs",
@@ -30,7 +30,8 @@
         "e2e:dark-hover": "node scripts/e2e-dark-hover.mjs",
         "e2e:bootstrap": "node scripts/e2e-bootstrap.mjs",
         "e2e:sweep": "node scripts/e2e-sweep.mjs",
-        "e2e:auth": "node scripts/e2e-auth.mjs"
+        "e2e:auth": "node scripts/e2e-auth.mjs",
+        "e2e:recovery": "node scripts/e2e-recovery.mjs"
     },
     "dependencies": {
         "@prisma/client": "^5.22.0",
