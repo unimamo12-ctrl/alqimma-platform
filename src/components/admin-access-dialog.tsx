@@ -5,25 +5,33 @@ import { useRouter } from 'next/navigation';
 import { Icon } from '@/components/icons';
 
 /**
- * Password-only door into the admin panel.
+ * The door into the admin panel: an address and a password.
  *
- * The password is matched against ADMIN accounts server-side, so a teacher or a
- * student typing their own password is refused rather than silently upgraded.
- * The field asks for one thing because that is what was asked for; the security
- * of it lives in `/api/admin/panel-access`, not in hiding the email field.
+ * It used to ask for one thing. The password was matched against ADMIN accounts
+ * server-side, which kept a teacher or student out, but it also meant any admin's
+ * password opened the panel and nobody said who they were — so two operators shared
+ * one secret, and the number of guesses available to an attacker grew with the
+ * number of admins on the platform. Naming the account fixes both and makes the
+ * per-account rate limit meaningful.
+ *
+ * The security still lives in `/api/admin/panel-access`: this form adds no
+ * protection, and `role: 'ADMIN'` there is what stops a teacher or a student typing
+ * their own credentials and receiving an ADMIN session.
  */
 export default function AdminAccessDialog() {
   const router = useRouter();
-  const inputRef = useRef<HTMLInputElement>(null);
+  const emailRef = useRef<HTMLInputElement>(null);
+  const passwordRef = useRef<HTMLInputElement>(null);
 
   const [open, setOpen] = useState(false);
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     if (!open) return;
-    inputRef.current?.focus();
+    emailRef.current?.focus();
   }, [open]);
 
   useEffect(() => {
@@ -36,6 +44,7 @@ export default function AdminAccessDialog() {
   }, [open]);
 
   function close() {
+    setEmail('');
     setPassword('');
     setError('');
     setOpen(false);
@@ -43,7 +52,7 @@ export default function AdminAccessDialog() {
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
-    if (!password || busy) return;
+    if (!email || !password || busy) return;
 
     setBusy(true);
     setError('');
@@ -52,12 +61,15 @@ export default function AdminAccessDialog() {
       const res = await fetch('/api/admin/panel-access', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({ email, password }),
       });
       const json = await res.json();
 
       if (!res.ok || !json.success) {
         setError(json.message || 'تعذر الدخول');
+        // Back to the address: a wrong password should not cost the operator their
+        // email too, and the next attempt is almost always a retyped password.
+        if (res.status === 401) passwordRef.current?.focus();
         return;
       }
 
@@ -122,6 +134,29 @@ export default function AdminAccessDialog() {
             <form onSubmit={submit} className="space-y-4 px-5 py-5">
               <div>
                 <label
+                  htmlFor="admin-email"
+                  className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-200"
+                >
+                  البريد الإلكتروني
+                </label>
+                <input
+                  id="admin-email"
+                  ref={emailRef}
+                  type="email"
+                  dir="ltr"
+                  value={email}
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    setError('');
+                  }}
+                  autoComplete="username"
+                  placeholder="admin@alqimma.com"
+                  className="w-full rounded-xl border border-slate-200 dark:border-slate-700 px-4 py-2.5 text-sm outline-none transition-all placeholder:text-slate-300 dark:placeholder:text-slate-300 focus:border-indigo-300 focus:ring-4 focus:ring-indigo-500/10"
+                />
+              </div>
+
+              <div>
+                <label
                   htmlFor="admin-password"
                   className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-200"
                 >
@@ -129,7 +164,7 @@ export default function AdminAccessDialog() {
                 </label>
                 <input
                   id="admin-password"
-                  ref={inputRef}
+                  ref={passwordRef}
                   type="password"
                   value={password}
                   onChange={(e) => {
@@ -150,7 +185,7 @@ export default function AdminAccessDialog() {
 
               <button
                 type="submit"
-                disabled={busy || !password}
+                disabled={busy || !email || !password}
                 className="flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm shadow-indigo-600/25 transition-all hover:bg-indigo-700 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Icon name="login" className="h-4 w-4" />

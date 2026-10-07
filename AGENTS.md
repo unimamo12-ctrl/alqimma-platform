@@ -19,10 +19,12 @@ socket/websocket smoke tests and the browser E2E hit a live server.
 - `npm run check:ratelimit` — unit checks on how a client address is derived
 - `npm run check:integrity` — asserts no row outlives or contradicts what it points at
 - `npm run e2e:recovery` — asserts a forgotten password is actually recoverable end to end
+- `npm run e2e:recovery` — asserts a forgotten password is actually recoverable end to end
+- `npm run e2e:admin-gate` — asserts the admin door takes a named account and refuses non-admins
 - `npm run bootstrap:deploy` — apply migrations, repair the catalog, create a first admin if there is none
 - `npm run e2e:bootstrap-deploy` — proves the above against a throwaway schema; needs a writable Postgres, so it is **not** in `verify`
 - `npm run build` — runs `bootstrap:deploy` first; stop the dev server before, it rewrites `.next`
-- `npm run verify` — typecheck + lint + check:quality + check:ratelimit + check:integrity + smoke + smoke:live + smoke:webrtc + e2e:live + e2e:recording + e2e:quiz + e2e:auth + e2e:recovery + e2e:bootstrap + e2e:nocourses + e2e:dark + e2e:dark-hover + e2e:sweep + cleanup:sessions
+- `npm run verify` — typecheck + lint + check:quality + check:ratelimit + check:integrity + smoke + smoke:live + smoke:webrtc + e2e:live + e2e:recording + e2e:quiz + e2e:auth + e2e:recovery + e2e:admin-gate + e2e:bootstrap + e2e:nocourses + e2e:dark + e2e:dark-hover + e2e:sweep + cleanup:sessions
 
 Test accounts all use password `password123`: `admin@alqimma.com`,
 `teacher@alqimma.com`, `student@alqimma.com`.
@@ -196,7 +198,46 @@ Registration is student/teacher only and cannot create an admin by design;
 `scripts/create-admin.mjs` exists because an operator still needs one, and a
 deployment that never ran `npm run seed` otherwise has no way in at all.
 
-## Recovering a password
+## Entering the admin panel
+
+`/admin` is a gate in front of the dashboard, not a route you can reach directly.
+It asks for **an address and a password** and issues a normal ADMIN session for the
+account it matched.
+
+It used to ask for a password alone and try it against every `ADMIN` in turn. The
+rate limiter had been fixed by then (the old local copy keyed on the *leftmost*
+forwarded-for entry, so a forged header bought a fresh bucket per attempt and 12
+consecutive guesses went unrecorded), but the shape was still wrong:
+
+- **Nobody said who they were.** Any admin's password opened the panel, so two
+  operators shared one secret and neither could tell which session they had just
+  created. The guesses available to an attacker also grew with the number of admins
+  on the platform.
+- **It walked every admin's hash**, so the work per attempt scaled with the roster
+  and the timing depended on which row matched.
+
+`npm run e2e:admin-gate` covers the invariants:
+
+- **The account is named, and it is that account.** Not "some admin" — the test
+  reads back `/api/auth/me` and asserts the session belongs to the address it sent.
+  A padded and an upper-cased address both work, so a typo in case is not a
+  lockout.
+- **`role: 'ADMIN'` is load-bearing now, not incidental.** Looking the address up
+  among *all* users would hand a teacher or a student an ADMIN session the moment
+  they typed their own real credentials. The test asserts this with the actual
+  `student@alqimma.com` / `password123` and `teacher@alqimma.com` / `password123`,
+  not with a fixture: a made-up non-admin would pass even with the role check
+  deleted. A suspended admin is refused too.
+- **One message for every refusal.** A wrong password, an unknown address, a
+  student and a suspended admin must be indistinguishable, or the endpoint tells an
+  attacker which addresses are admins.
+- **Two budgets, like `forgot-password`.** Per-account (5/10min) is the real
+  defence; per-IP (10/10min) is only there to stop one host spraying. An unknown
+  address is counted against the IP exactly like a wrong password, because skipping
+  that would make the per-account limit meaningless — an attacker would just vary
+  the address.
+- Still per-process, so it resets on restart. Unchanged, and still the weakest part
+  of this gate.
 
 This flow was a silent dead end, and the bug was mine. Closing a real
 account-takeover hole left no delivery channel behind, so `forgot-password`
